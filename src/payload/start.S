@@ -12,10 +12,9 @@ _start:
     mov  sp, x0
 
     /*
-     * payload.bin contains no bytes for the NOLOAD .bss section. A raw
-     * next-stage loader therefore cannot be assumed to have zeroed it for us.
-     * Clear it explicitly before any C global state (debug sink, exception
-     * snapshot, etc.) can be observed.
+     * payload.bin cannot rely on a loader to initialize NOLOAD .bss. Clear it
+     * explicitly before any C global state (debug sink, exception snapshot,
+     * etc.) can be observed.
      */
     adrp x1, __bss_start
     add  x1, x1, :lo12:__bss_start
@@ -38,3 +37,12 @@ _start:
     b 3b
 
 .size _start, . - _start
+
+/*
+ * Keep the bootstrap stack in a real PROGBITS section so the flat binary's
+ * byte size includes the storage it owns. A raw loader only needs to reserve
+ * payload.bin itself; it no longer needs undocumented scratch bytes after it.
+ */
+.section .stack, "aw", %progbits
+.balign 16
+.space 65536, 0
