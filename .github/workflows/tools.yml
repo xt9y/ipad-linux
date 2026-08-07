@@ -8,6 +8,7 @@ on:
       - 'tools/**'
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
+      - 'tests/analyze_first_boot_test.py'
       - 'src/adt/**'
   pull_request:
     branches: [ ipad-air-5 ]
@@ -16,6 +17,7 @@ on:
       - 'tools/**'
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
+      - 'tests/analyze_first_boot_test.py'
       - 'src/adt/**'
 
 jobs:
@@ -34,3 +36,6 @@ jobs:
 
       - name: Test native m1n1 payload packer
         run: python3 -m unittest -v tests/pack_m1n1_test.py
+
+      - name: Test first-boot serial analyzer
+        run: python3 -m unittest -v tests/analyze_first_boot_test.py
