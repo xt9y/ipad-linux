@@ -1,0 +1,72 @@
+name: linux-dts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/linux-dts.yml'
+      - 'dts/**'
+  pull_request:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/linux-dts.yml'
+      - 'dts/**'
+
+jobs:
+  mainline-dtb:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ipad-linux
+        uses: actions/checkout@v4
+        with:
+          path: ipad-linux
+
+      - name: Checkout current mainline Linux
+        uses: actions/checkout@v4
+        with:
+          repository: torvalds/linux
+          path: linux
+          fetch-depth: 1
+
+      - name: Install kernel build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            gcc-aarch64-linux-gnu \
+            bc bison flex libssl-dev libelf-dev \
+            device-tree-compiler
+
+      - name: Overlay J407 board DTS
+        run: |
+          cp ipad-linux/dts/t8103-j407.dts linux/arch/arm64/boot/dts/apple/t8103-j407.dts
+          printf '%s\n' 'dtb-$(CONFIG_ARCH_APPLE) += t8103-j407.dtb' >> linux/arch/arm64/boot/dts/apple/Makefile
+
+      - name: Configure arm64
+        working-directory: linux
+        run: make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+
+      - name: Build arm64 device trees
+        working-directory: linux
+        run: make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j2 dtbs
+
+      - name: Inspect J407 DTB
+        run: |
+          test -s linux/arch/arm64/boot/dts/apple/t8103-j407.dtb
+          dtc -I dtb -O dts \
+            linux/arch/arm64/boot/dts/apple/t8103-j407.dtb \
+            -o ipad-linux/build-j407.dts
+          grep -q 'Apple iPad Air (5th generation, Wi-Fi)' ipad-linux/build-j407.dts
+          grep -q 'apple,j407' ipad-linux/build-j407.dts
+          grep -q 'serial@235200000' ipad-linux/build-j407.dts
+          grep -q 'status = "okay"' ipad-linux/build-j407.dts
+          grep -q 'memory@800000000' ipad-linux/build-j407.dts
+
+      - name: Upload J407 DTB
+        uses: actions/upload-artifact@v4
+        with:
+          name: t8103-j407-mainline-dtb
+          path: |
+            linux/arch/arm64/boot/dts/apple/t8103-j407.dtb
+            ipad-linux/build-j407.dts
