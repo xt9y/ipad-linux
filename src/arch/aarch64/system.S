@@ -56,6 +56,43 @@ aarch64_mmu_enabled:
     ret
 .size aarch64_mmu_enabled, . - aarch64_mmu_enabled
 
+.global aarch64_cntfrq
+.type aarch64_cntfrq, %function
+aarch64_cntfrq:
+    mrs x0, CNTFRQ_EL0
+    ret
+.size aarch64_cntfrq, . - aarch64_cntfrq
+
+.global aarch64_cntvoff_el2
+.type aarch64_cntvoff_el2, %function
+aarch64_cntvoff_el2:
+    mrs x1, CurrentEL
+    lsr x1, x1, #2
+    cmp x1, #2
+    b.ne 7f
+    mrs x0, CNTVOFF_EL2
+    ret
+7:
+    mov x0, #0
+    ret
+.size aarch64_cntvoff_el2, . - aarch64_cntvoff_el2
+
+.global aarch64_zero_cntvoff_el2
+.type aarch64_zero_cntvoff_el2, %function
+aarch64_zero_cntvoff_el2:
+    mrs x1, CurrentEL
+    lsr x1, x1, #2
+    cmp x1, #2
+    b.ne 8f
+    msr CNTVOFF_EL2, xzr
+    isb
+    mov x0, #1
+    ret
+8:
+    mov x0, #0
+    ret
+.size aarch64_zero_cntvoff_el2, . - aarch64_zero_cntvoff_el2
+
 .global aarch64_clean_dcache_range
 .type aarch64_clean_dcache_range, %function
 aarch64_clean_dcache_range:
