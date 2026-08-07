@@ -1,0 +1,160 @@
+name: j407-first-boot-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/j407-image.yml'
+      - 'Makefile'
+      - 'src/**'
+      - 'dts/**'
+      - 'kernel/**'
+      - 'initramfs/**'
+      - 'scripts/build-initramfs.sh'
+      - 'scripts/pack-m1n1-j407.py'
+  pull_request:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/j407-image.yml'
+      - 'Makefile'
+      - 'src/**'
+      - 'dts/**'
+      - 'kernel/**'
+      - 'initramfs/**'
+      - 'scripts/build-initramfs.sh'
+      - 'scripts/pack-m1n1-j407.py'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ipad-linux
+        uses: actions/checkout@v4
+        with:
+          path: ipad-linux
+
+      - name: Checkout current mainline Linux
+        uses: actions/checkout@v4
+        with:
+          repository: torvalds/linux
+          path: linux
+          fetch-depth: 1
+
+      - name: Checkout current upstream m1n1
+        uses: actions/checkout@v4
+        with:
+          repository: AsahiLinux/m1n1
+          submodules: recursive
+          path: m1n1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            clang lld llvm \
+            gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+            bc bison flex libssl-dev libelf-dev libgnutls28-dev \
+            device-tree-compiler cpio file python3
+          rustup target install aarch64-unknown-none-softfloat
+
+      - name: Build ipad-linux diagnostic Stage 2
+        working-directory: ipad-linux
+        run: |
+          make
+          test -s build/payload.bin
+          llvm-readelf -h build/payload.elf
+          if llvm-readelf -r build/payload.elf | grep -q 'R_AARCH64_'; then
+            echo 'ipad-linux payload contains runtime relocations'
+            exit 1
+          fi
+
+      - name: Build ARM64 bring-up initramfs
+        working-directory: ipad-linux
+        run: |
+          CROSS_COMPILE=aarch64-linux-gnu- \
+            sh scripts/build-initramfs.sh build/initramfs
+          test -s build/initramfs/initramfs.cpio.gz
+
+      - name: Overlay J407 DTS into mainline
+        run: |
+          cp ipad-linux/dts/t8103-j407.dts \
+            linux/arch/arm64/boot/dts/apple/t8103-j407.dts
+          printf '%s\n' 'dtb-$(CONFIG_ARCH_APPLE) += t8103-j407.dtb' \
+            >> linux/arch/arm64/boot/dts/apple/Makefile
+
+      - name: Configure mainline for J407 bring-up
+        working-directory: linux
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+          ./scripts/kconfig/merge_config.sh -m .config \
+            ../ipad-linux/kernel/j407-bringup.config
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+          for option in \
+            ARCH_APPLE \
+            SERIAL_SAMSUNG SERIAL_SAMSUNG_CONSOLE \
+            APPLE_MAILBOX APPLE_RTKIT APPLE_SART APPLE_DART \
+            NVME_APPLE PCIE_APPLE; do
+              grep -q "^CONFIG_${option}=y" .config || {
+                echo "CONFIG_${option}=y was not resolved"
+                exit 1
+              }
+          done
+
+      - name: Build mainline Linux Image and J407 DTB
+        working-directory: linux
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j2 \
+            Image arch/arm64/boot/dts/apple/t8103-j407.dtb
+          test -s arch/arm64/boot/Image
+          test -s arch/arm64/boot/dts/apple/t8103-j407.dtb
+
+      - name: Validate compiled J407 DTB
+        run: |
+          mkdir -p ipad-linux/build/j407
+          dtc -I dtb -O dts \
+            linux/arch/arm64/boot/dts/apple/t8103-j407.dtb \
+            -o ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'apple,j407' ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'serial@235200000' ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'earlycon console=ttySAC0,115200 loglevel=8' \
+            ipad-linux/build/j407/t8103-j407.compiled.dts
+
+      - name: Build upstream m1n1
+        working-directory: m1n1
+        run: |
+          make -j2 ARCH=aarch64-linux-gnu- RELEASE=1
+          test -s build/m1n1.bin
+
+      - name: Pack native m1n1 payload chain
+        working-directory: ipad-linux
+        run: |
+          python3 scripts/pack-m1n1-j407.py \
+            --m1n1 ../m1n1/build/m1n1.bin \
+            --dtb ../linux/arch/arm64/boot/dts/apple/t8103-j407.dtb \
+            --initramfs build/initramfs/initramfs.cpio.gz \
+            --image ../linux/arch/arm64/boot/Image \
+            --output build/j407/j407-m1n1-linux.bin \
+            --manifest build/j407/j407-m1n1-linux.manifest.txt
+          test -s build/j407/j407-m1n1-linux.bin
+
+      - name: Assemble first-boot artifact directory
+        run: |
+          cp linux/arch/arm64/boot/Image ipad-linux/build/j407/Image
+          cp linux/arch/arm64/boot/dts/apple/t8103-j407.dtb \
+            ipad-linux/build/j407/t8103-j407.dtb
+          cp ipad-linux/build/initramfs/initramfs.cpio.gz \
+            ipad-linux/build/j407/initramfs.cpio.gz
+          cp m1n1/build/m1n1.bin ipad-linux/build/j407/m1n1.bin
+          cp linux/.config ipad-linux/build/j407/linux.config
+          cp ipad-linux/build/payload.bin ipad-linux/build/j407/ipad-linux-stage2.bin
+          sha256sum ipad-linux/build/j407/* \
+            > ipad-linux/build/j407/SHA256SUMS
+          ls -lh ipad-linux/build/j407
+
+      - name: Upload J407 first-boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: j407-first-boot-image
+          path: ipad-linux/build/j407/
