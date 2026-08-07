@@ -37,21 +37,27 @@ def parse_summary(text: str) -> dict[str, object]:
         match = re.search(rf"^\s*{re.escape(prefix)}=(\S+)\s*$", text, re.MULTILINE)
         return match.group(1) if match else "unknown"
 
-    cpu_match = re.search(r"^\s*cpu_nodes=(\d+)", text, re.MULTILINE)
-    block_match = re.search(r"^\s*block_devices=(\d+)", text, re.MULTILINE)
-    nvme_count_match = re.search(r"^\s*nvme_controllers=(\d+)", text, re.MULTILINE)
-    graphics_match = re.search(r"^\s*graphics_entries=(\d+)", text, re.MULTILINE)
+    def count(name: str) -> int | None:
+        match = re.search(rf"^\s*{re.escape(name)}=(\d+)", text, re.MULTILINE)
+        return int(match.group(1)) if match else None
 
     return {
         "last_stage": reached[-1] if reached else "no-known-marker",
         "stages_reached": reached,
         "smp": explicit_state("SMP"),
         "nvme": explicit_state("ANS2/NVMe"),
+        "usb": explicit_state("USB"),
+        "typec": explicit_state("TYPEC"),
+        "wifi4387": explicit_state("BCM4387-WIFI"),
+        "bt4387": explicit_state("BCM4387-BT"),
         "graphics": explicit_state("framebuffer/DRM"),
-        "cpu_nodes": int(cpu_match.group(1)) if cpu_match else None,
-        "block_devices": int(block_match.group(1)) if block_match else None,
-        "nvme_controllers": int(nvme_count_match.group(1)) if nvme_count_match else None,
-        "graphics_entries": int(graphics_match.group(1)) if graphics_match else None,
+        "cpu_nodes": count("cpu_nodes"),
+        "block_devices": count("block_devices"),
+        "nvme_controllers": count("nvme_controllers"),
+        "graphics_entries": count("graphics_entries"),
+        "usb_entries": count("usb_entries"),
+        "typec_entries": count("typec_entries"),
+        "pci_functions": count("pci_functions"),
         "aarch64_exception": "ipad-linux: AArch64 exception" in text,
         "linux_panic": "Kernel panic - not syncing" in text,
     }
@@ -64,6 +70,12 @@ def print_text(result: dict[str, object]) -> None:
     print(
         f"ANS2/NVMe: {result['nvme']} "
         f"(controllers={result['nvme_controllers']}, block_devices={result['block_devices']})"
+    )
+    print(f"USB: {result['usb']} (entries={result['usb_entries']})")
+    print(f"Type-C: {result['typec']} (entries={result['typec_entries']})")
+    print(
+        f"BCM4387: wifi={result['wifi4387']} bt={result['bt4387']} "
+        f"(pci_functions={result['pci_functions']})"
     )
     print(f"graphics: {result['graphics']} (entries={result['graphics_entries']})")
     print(f"stage2_exception: {result['aarch64_exception']}")
