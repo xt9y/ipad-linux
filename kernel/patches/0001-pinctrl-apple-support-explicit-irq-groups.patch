@@ -39,7 +39,7 @@ diff --git a/Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml b/Docu
 +      If absent, groups are assigned sequentially starting at zero, matching
 +      the behavior expected by existing Apple device trees.
 +
- diff --git a/drivers/pinctrl/pinctrl-apple-gpio.c b/drivers/pinctrl/pinctrl-apple-gpio.c
++diff --git a/drivers/pinctrl/pinctrl-apple-gpio.c b/drivers/pinctrl/pinctrl-apple-gpio.c
 --- a/drivers/pinctrl/pinctrl-apple-gpio.c
 +++ b/drivers/pinctrl/pinctrl-apple-gpio.c
 @@ -271,2 +271,3 @@ static unsigned int apple_gpio_irq_startup(struct irq_data *data)
