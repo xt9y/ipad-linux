@@ -4,85 +4,147 @@ This document records the branch decisions made while converging the project on
 `ipad-air-5`. It exists to prevent old experimental branches from accidentally
 reintroducing superseded boot ABIs or unverified J407 board assumptions.
 
+## Final policy
+
+`ipad-air-5` is the **only canonical J407 integration branch**.
+
+An old research branch is not merged merely because it contains commits that are
+not ancestors of `ipad-air-5`. Divergent branches often contain older versions
+of files which have already been ported forward and tested in newer form.
+
+The physical-test-readiness work is developed temporarily on
+`integration/j407-physical-test-ready` and is intended to be fast-forwarded to
+`ipad-air-5` after its final gates pass. Once that happens, the integration
+branch is historical only.
+
 ## `ipad-air-5`
 
-Canonical integration branch for the iPad Air 5 Wi-Fi (`iPad13,16`, J407,
-T8103) port.
+Status: **canonical/final J407 branch.**
 
-All production-facing bring-up work should eventually land here through a CI
-gate. Hardware facts in this branch must be supported by the J407 Apple Device
-Tree, current upstream Linux/m1n1 behavior, or measurements from the target.
+Target:
+
+```text
+iPad Air 5 Wi-Fi
+iPad13,16
+J407AP
+T8103 / Apple M1
+```
+
+All physical-test artifacts should be built from this branch after integration.
 
 ## `main`
 
 Status: **stale baseline; do not merge into `ipad-air-5`.**
 
-`ipad-air-5` contains the large body of newer J407 work and is far ahead of
-`main`. Merging `main` back would provide no useful forward work and would make
-history harder to reason about.
-
-The eventual direction, after physical J407 bring-up is stable, is the opposite:
-promote the tested `ipad-air-5` result to the repository's default branch.
+`ipad-air-5` contains the complete newer J407 bring-up history. Merging `main`
+back provides no forward work. If the project later wants `main` to become the
+public default again, the correct direction is to promote the tested J407 work
+forward into `main`, not merge the stale baseline backwards.
 
 ## `work/linux-entry-contract`
 
-Status: **superseded; do not merge wholesale.**
+Status: **superseded historical branch; do not merge wholesale.**
 
-This branch contains earlier revisions of the entry ABI, runtime FDT patching,
-SMP contract, m1n1 handoff, J407 discovery and associated documentation/tests.
-Those facilities already exist in newer form on `ipad-air-5`, including:
+It contains earlier versions of:
 
-- versioned `boot_info` handoff data;
-- Linux image/layout validation;
-- runtime FDT patching;
-- J407 SMP release-address validation;
-- `integration/m1n1/ipad_linux_adapter.c`;
-- m1n1 compile/API drift checks;
-- J407 ADT discovery and host tests.
+- `boot_info`;
+- FDT patching;
+- SMP contracts;
+- m1n1 handoff;
+- J407 discovery;
+- associated tests/documentation.
 
-Re-merging this branch would risk downgrading those implementations. It remains
-useful only as historical reference.
+All useful concepts are already present in newer, tested form on the canonical
+line. A whole-branch merge would risk ABI and validation regressions.
 
 ## `work/j407-entry-v2`
 
-Status: **partially useful; selectively integrated.**
+Status: **selectively integrated; do not merge wholesale.**
 
-This branch was created later than the original entry-contract work and contains
-several useful PCIe/USB/diagnostic changes, but it diverged before the newest
-ADT function decoder and touch/audio research landed on `ipad-air-5`.
+Useful work was ported forward, including:
 
-The following concepts have been selectively integrated on top of the current
-branch rather than merging the branch as a unit:
+- J407 USB0/DART/ATC enablement;
+- built-in DWC3/Type-C bring-up configuration;
+- PCIe/BCM4387 diagnostics;
+- first-boot USB/PCI inventory;
+- conservative CD3217 discovery.
 
-- built-in DWC3/ATC/Type-C and SimpleDRM bring-up configuration;
-- explicit enablement of the one J407-verified USB0 path;
-- explicit disablement of the unsupported second T8103 USB path;
-- explicit enablement of the J407 PCIe host for BCM4387;
-- expanded initramfs PCI/USB/Type-C diagnostics;
-- expanded serial-log analyzer coverage;
-- PCIe/radio information in the host ADT inspector.
+Its more speculative USB-C graph was deliberately not copied without independent
+J407 evidence.
 
-The full USB-C endpoint/mux graph from that work branch is intentionally **not**
-copied wholesale. J407's CD3217 is currently represented conservatively as an
-`apple,cd321x` I2C device at address `0x38`, without a guessed IRQ or connector
-routing. The upstream driver can poll when no IRQ is provided. The graph can be
-added later when its J407-specific lane/role routing is independently verified.
+## `work/j407-integrated`
+
+Status: **superseded divergent integration attempt; do not merge.**
+
+This branch contains alternative/older versions of the first-boot DTS, packer,
+initramfs and workflow files. The current canonical line has newer verified
+implementations and stronger CI contracts.
 
 ## `integration/j407-usb-radio`
 
-Status: **active CI integration branch.**
+Status: **merged/superseded.**
 
-This branch starts from the current `ipad-air-5` head and contains the selective
-USB0, CD3217, framebuffer-console and radio/diagnostic integration. It is gated
-by the draft pull request into `ipad-air-5` and should be merged only after all
-current workflow runs pass.
+This integration produced the USB/radio first-boot work that was merged into
+`ipad-air-5` as the PR #2 integration. Do not merge it again.
+
+## `integration/j407-touch`
+
+Status: **merged/superseded.**
+
+This integration produced the J407 touch foundation and Apple GPIO IRQ-group
+kernel patch. It was merged into `ipad-air-5` as PR #3 after the build, tools,
+kernel-patch, Linux-bundle and first-boot-image gates were all green. Do not
+merge it again.
+
+## `integration/j407-live-discovery`
+
+Status: **superseded precursor to physical-test readiness.**
+
+This was created after the touch merge for live ADT/clock/report tooling. Its
+commits were carried forward into `integration/j407-physical-test-ready`.
+
+## `integration/j407-live-discovery-final`
+
+Status: **redundant historical ref; do not merge separately.**
+
+It was accidentally created while reorganizing the final integration work and
+does not represent an independent feature line.
+
+## `integration/j407-physical-test-ready-2`
+
+Status: **redundant historical ref; do not merge separately.**
+
+It was accidentally created while checking the existing final branch. The
+canonical temporary integration line is `integration/j407-physical-test-ready`.
+
+## `integration/j407-physical-test-ready`
+
+Status: **final temporary integration branch before real hardware testing.**
+
+Scope:
+
+- live ADT clock discovery;
+- m1n1 live ADT dump helper;
+- expanded PID-1 hardware inventory;
+- on-display first-boot summary;
+- self-verifying Actions hardware-test kit;
+- Mac/Linux host preflight;
+- boot-log analyzer;
+- reproducible hardware-report builder;
+- complete physical-test procedure in `docs/first-boot.md` and `README.md`.
+
+This branch must remain a strict fast-forward of `ipad-air-5`. After final
+validation, `ipad-air-5` should be moved forward to its exact head, preserving
+all source SHAs used by hardware-test artifacts.
 
 ## Merge policy
 
-1. Never merge a divergent research branch simply because it is ahead by commit
-   count.
-2. Compare its changed files against current `ipad-air-5` first.
-3. Port forward only the useful behavior, preserving newer ABI/hardware work.
-4. Keep unverified board wiring disabled or absent.
-5. Require the bare-metal, host-tool, mainline-Linux and first-boot-image CI
-   gates before merging an integration branch.
+1. Never whole-merge a divergent research branch based only on commit count.
+2. Compare file changes against current `ipad-air-5` first.
+3. Port forward only genuinely newer behavior.
+4. Keep unverified hardware wiring disabled/absent.
+5. Require fail-closed tests for parsers, payloads and artifact identity.
+6. Require the bare-metal, host-tools, m1n1/kernel-patch, Linux-bundle and
+   first-boot-image gates for canonical integration.
+7. Prefer a fast-forward from a clean integration branch so artifact
+   `SOURCE_COMMITS` remain directly reachable on the canonical branch.
