@@ -23,6 +23,7 @@ OBJS := \
 	build/main.o \
 	build/platform.o \
 	build/discovery.o \
+	build/quiesce.o \
 	build/memory.o \
 	build/adt.o \
 	build/adt_reg.o \
@@ -60,6 +61,9 @@ build/platform.o: $(PLATFORM_DIR)/platform.c $(PLATFORM_DIR)/platform.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/discovery.o: $(PLATFORM_DIR)/discovery.c $(PLATFORM_DIR)/discovery.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/quiesce.o: $(PLATFORM_DIR)/quiesce.c $(PLATFORM_DIR)/quiesce.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/memory.o: src/memory/memory.c src/memory/memory.h | build
