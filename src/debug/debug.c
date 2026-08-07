@@ -25,3 +25,19 @@ void debug_puts(const char *text)
 
     debug_write(text, len);
 }
+
+void debug_puthex64(uint64_t value)
+{
+    static const char digits[] = "0123456789abcdef";
+    char text[18];
+
+    text[0] = '0';
+    text[1] = 'x';
+
+    for (unsigned i = 0; i < 16; ++i) {
+        unsigned shift = (15u - i) * 4u;
+        text[2 + i] = digits[(value >> shift) & 0xfu];
+    }
+
+    debug_write(text, sizeof(text));
+}
