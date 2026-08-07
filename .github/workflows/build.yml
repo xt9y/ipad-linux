@@ -51,7 +51,9 @@ jobs:
       - name: Run FDT builder tests
         run: |
           clang -std=c17 -Wall -Wextra -Werror -Isrc/fdt tests/fdt_test.c src/fdt/fdt.c -o build/fdt_test
-          ./build/fdt_test
+          ./build/fdt_test build/test.dtb
+          dtc -I dtb -O dts build/test.dtb -o build/test.dts
+          grep -q 'apple,j407' build/test.dts
 
       - name: Show image information
         run: |
@@ -66,3 +68,5 @@ jobs:
             build/payload.elf
             build/payload.bin
             build/payload.dis
+            build/test.dtb
+            build/test.dts
