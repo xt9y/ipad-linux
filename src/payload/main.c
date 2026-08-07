@@ -102,7 +102,21 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
     if (!linux_boot_plan_validate(&plan))
         return 0;
 
+    uint64_t kernel_cache_size = image.image_size ? image.image_size : boot->linux_image_size;
+
+    /*
+     * Linux requires the loaded Image to be clean to the Point of Coherency
+     * and free of stale instruction-cache entries. The DTB/initrd are data,
+     * so they only need the data-cache clean here.
+     */
+    aarch64_clean_dcache_range(boot->linux_image_addr, kernel_cache_size);
+    aarch64_clean_dcache_range(boot->dtb_addr, (uint64_t)dtb_total);
+    if (plan.initrd_size)
+        aarch64_clean_dcache_range(plan.initrd_addr, plan.initrd_size);
+    aarch64_invalidate_icache_range(boot->linux_image_addr, kernel_cache_size);
+
     debug_puts("ipad-linux: Linux handoff contract valid\n");
+    debug_puts("ipad-linux: kernel/DTB caches synchronized\n");
     debug_puts("ipad-linux: entering Linux\n");
 
     aarch64_mask_interrupts();
