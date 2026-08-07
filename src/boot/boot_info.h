@@ -3,21 +3,19 @@
 #include <stdint.h>
 
 #define IPL_BOOT_INFO_MAGIC 0x495041444C4E5831ULL /* "IPADLNX1" */
-#define IPL_BOOT_INFO_VERSION 2u
+#define IPL_BOOT_INFO_VERSION 3u
 
 enum boot_info_flags {
     BOOT_INFO_HAS_ADT = 1u << 0,
     BOOT_INFO_MMU_ENABLED = 1u << 1,
     BOOT_INFO_HAS_DEBUG_WRITE = 1u << 2,
+    BOOT_INFO_HAS_LINUX_IMAGE = 1u << 3,
+    BOOT_INFO_HAS_DTB = 1u << 4,
+    BOOT_INFO_HAS_INITRD = 1u << 5,
+    BOOT_INFO_PLATFORM_QUIESCED = 1u << 6,
 };
 
-/*
- * Optional loader-provided debug callback ABI.
- *
- * x0/data = byte buffer
- * x1/size = byte count
- * x2/ctx  = opaque loader context
- */
+/* Optional loader-provided debug callback ABI. */
 typedef void (*boot_debug_write_fn)(const char *data, uint64_t size, void *ctx);
 
 struct boot_info {
@@ -33,6 +31,7 @@ struct boot_info {
     uint64_t adt_addr;
     uint64_t adt_size;
 
+    /* Address/size of this ipad-linux payload, if known. */
     uint64_t image_base;
     uint64_t image_size;
 
@@ -41,7 +40,15 @@ struct boot_info {
     uint64_t debug_write_addr;
     uint64_t debug_ctx;
 
-    uint64_t reserved[5];
+    /* Optional preloaded Linux artifacts supplied by the entry loader. */
+    uint64_t linux_image_addr;
+    uint64_t linux_image_size;
+    uint64_t dtb_addr;
+    uint64_t dtb_size;
+    uint64_t initrd_addr;
+    uint64_t initrd_size;
+
+    uint64_t reserved[4];
 };
 
 static inline int boot_info_valid(const struct boot_info *info)
