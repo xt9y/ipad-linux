@@ -93,6 +93,8 @@ jobs:
         run: |
           cp ipad-linux/dts/t8103-j407.dts \
             linux/arch/arm64/boot/dts/apple/t8103-j407.dts
+          cp ipad-linux/dts/t8103-j407-touch-foundation.dtsi \
+            linux/arch/arm64/boot/dts/apple/t8103-j407-touch-foundation.dtsi
           printf '%s\n' 'dtb-$(CONFIG_ARCH_APPLE) += t8103-j407.dtb' \
             >> linux/arch/arm64/boot/dts/apple/Makefile
 
@@ -145,6 +147,8 @@ jobs:
           grep -q 'pci14e4,4433' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'pci14e4,5f71' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'apple,lycheea' ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'pinctrl@24a820000' ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'pinctrl@23d1f0000' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'earlycon console=tty0 console=ttySAC0,115200 loglevel=8' \
             ipad-linux/build/j407/t8103-j407.compiled.dts
 
