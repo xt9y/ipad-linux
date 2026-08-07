@@ -11,10 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install LLVM tools
+      - name: Install build/test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm
+          sudo apt-get install -y clang lld llvm device-tree-compiler
 
       - name: Build payload
         run: make
@@ -33,15 +33,30 @@ jobs:
           clang -std=c17 -Wall -Wextra -Werror -Isrc/adt tests/adt_test.c src/adt/adt.c -o build/adt_test
           ./build/adt_test
 
+      - name: Run ADT reg translation tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/adt tests/adt_reg_test.c src/adt/adt.c src/adt/adt_reg.c -o build/adt_reg_test
+          ./build/adt_reg_test
+
       - name: Run boot ABI tests
         run: |
           clang -std=c17 -Wall -Wextra -Werror -Isrc/boot tests/boot_info_test.c -o build/boot_info_test
           ./build/boot_info_test
 
+      - name: Run Linux boot-plan tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/boot -Isrc/memory tests/linux_boot_test.c src/boot/linux_image.c src/boot/boot_plan.c src/memory/memory.c -o build/linux_boot_test
+          ./build/linux_boot_test
+
+      - name: Run FDT builder tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/fdt tests/fdt_test.c src/fdt/fdt.c -o build/fdt_test
+          ./build/fdt_test
+
       - name: Show image information
         run: |
           llvm-size build/payload.elf
-          llvm-nm -n build/payload.elf | head -40
+          llvm-nm -n build/payload.elf | head -80
 
       - name: Upload payload artifacts
         uses: actions/upload-artifact@v4
