@@ -47,7 +47,7 @@ SECTIONS
     __image_end = .;
 
     ASSERT((__stack_top - __stack_bottom) == 64K,
-           "bootstrap stack must remain exactly 64 KiB");
+           "bootstrap stack must remain exactly 64 KiB")
 
     /DISCARD/ : {
         *(.comment*)
