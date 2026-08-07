@@ -52,6 +52,11 @@ static int runtime_cpu_contract_valid(const struct boot_info *boot)
         return 0;
     }
 
+    if (!aarch64_cntfrq()) {
+        debug_puts("ipad-linux: CNTFRQ is not initialized\n");
+        return 0;
+    }
+
     return 1;
 }
 
@@ -119,6 +124,18 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
 
     if (!linux_boot_plan_validate(&plan))
         return 0;
+
+    /*
+     * At EL2 we own CNTVOFF_EL2 and normalize it to zero for the boot CPU.
+     * Secondary CPUs must receive the same value when SMP bring-up lands.
+     * At EL1, CNTHCTL_EL2/CNTVOFF preparation remains an entry-loader duty.
+     */
+    if (plan.current_el == 2) {
+        if (!aarch64_zero_cntvoff_el2() || aarch64_cntvoff_el2() != 0) {
+            debug_puts("ipad-linux: failed to normalize CNTVOFF_EL2\n");
+            return 0;
+        }
+    }
 
     uint64_t kernel_cache_size = image.image_size ? image.image_size : boot->linux_image_size;
 
