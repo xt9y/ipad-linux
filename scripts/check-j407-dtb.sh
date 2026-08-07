@@ -14,6 +14,17 @@ need_prop() {
     fdtget "$DTB" "$node" "$prop" >/dev/null
 }
 
+need_string() {
+    node="$1"
+    prop="$2"
+    expected="$3"
+    actual="$(fdtget -t s "$DTB" "$node" "$prop")"
+    [ "$actual" = "$expected" ] || {
+        echo "$node/$prop: expected '$expected', got '$actual'" >&2
+        exit 1
+    }
+}
+
 # Board identity and m1n1 kboot's mandatory top-level data.
 need_prop / compatible
 need_prop / model
@@ -45,5 +56,21 @@ need_prop /soc/nvme@27bcc0000 reg
 need_prop /soc/nvme@27bcc0000 interrupts
 need_prop /soc/nvme@27bcc0000 mboxes
 need_prop /soc/nvme@27bcc0000 apple,sart
+
+# J407's BCM4387 combo radio is PCIe port00 function 0/1. Resolve through
+# aliases because m1n1 uses these names for MAC/calibration patching too.
+need_prop /aliases wifi0
+need_prop /aliases bluetooth0
+wifi_path="$(fdtget -t s "$DTB" /aliases wifi0)"
+bt_path="$(fdtget -t s "$DTB" /aliases bluetooth0)"
+need_node "$wifi_path"
+need_node "$bt_path"
+need_string "$wifi_path" compatible "pci14e4,4433"
+need_string "$wifi_path" brcm,board-type "apple,lycheea"
+need_string "$bt_path" compatible "pci14e4,5f71"
+need_string "$bt_path" brcm,board-type "apple,lycheea"
+need_prop "$wifi_path" local-mac-address
+need_prop "$wifi_path" apple,antenna-sku
+need_prop "$bt_path" local-bd-address
 
 printf 'J407 DTB contract OK: %s\n' "$DTB"
