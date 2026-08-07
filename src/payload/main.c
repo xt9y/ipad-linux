@@ -10,6 +10,7 @@
 #include "linux_image.h"
 #include "memory.h"
 #include "platform.h"
+#include "quiesce.h"
 #include "system.h"
 #include "uart.h"
 
@@ -108,7 +109,9 @@ void kernel_main(const struct boot_info *boot)
             };
 
             if (adt_validate(adt)) {
-                if (!loader_debug && execution_can_touch_physical_mmio(boot))
+                int physical_mmio = execution_can_touch_physical_mmio(boot);
+
+                if (!loader_debug && physical_mmio)
                     debug_uart_from_adt(adt, 0);
 
                 debug_puts("ipad-linux: entered J407 payload\n");
@@ -121,6 +124,9 @@ void kernel_main(const struct boot_info *boot)
                     heartbeat ^= hw.aic_base;
                     debug_puts("ipad-linux: J407 hardware discovery complete\n");
                 }
+
+                if (physical_mmio && j407_disable_watchdogs(adt))
+                    debug_puts("ipad-linux: watchdogs disabled\n");
 
                 struct adt_property_view model;
                 if (adt_root_property(adt, "model", &model))
