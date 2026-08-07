@@ -24,28 +24,34 @@ Use upstream `t8103.dtsi` for SoC topology. Do **not** include `t8103-jxxx.dtsi`
 | USB controller 0 | J407 contains `usb-drd0` and `dart-usb0`; T8103 USB/ATC blocks are present in ADT | `dwc3_0: usb@382280000` plus DARTs and `atcphy0` | likely | J407 has one external USB-C port; verify the exact controller/PHY and DART mapping before enabling board routing |
 | USB controller 1 | T8103 provides a second DWC3/ATC path used on some Macs | `dwc3_1` + `atcphy1` | unknown for J407 | Keep board routing absent until J407 ADT proves the path is used |
 | PCIe Wi-Fi/BT | iPad has Wi-Fi/BT, but Mac `t8103-jxxx.dtsi` hardcodes PCIe devices/board types for Macs | T8103 PCIe controller/DART support exists | unknown board wiring | Do not copy Mac Wi-Fi/BT nodes. Derive J407 transport/chip/firmware data independently |
-| Display / DCP | J407 ADT contains `dcp0-expert`, DCP ASC data, display DART/scaler and `dispext0,t8103` data | no directly reusable J407 board description in current mainline T8103 DTS | unknown / major port | Keep firmware/simple framebuffer as first display target; native DCP later |
+| Display / DCP | J407 ADT contains `dcp0-expert`, DCP ASC data, display DART/scaler and `dispext0,t8103` data | no directly reusable J407 board description in current mainline T8103 DTS | unknown / major port | Use m1n1-patched firmware simple-framebuffer first; native DCP later |
 | GPU | M1/T8103 GPU is supported by the Asahi stack at SoC level | Linux/Asahi AGX support exists for T8103 | SoC reusable, board integration unknown | Defer until memory/IOMMU/firmware handoff is stable |
 | Watchdog | J407 ADT exposes watchdog state; T8103 map has WDT at `0x23d2b0000` | Linux Apple watchdog support can be evaluated | likely | Diagnostic Stage 2 only disables discovered watchdogs in a constrained MMU-off context |
 
 ## First-boot path
 
-The preferred first-boot path now uses upstream m1n1's native payload scanner/kboot implementation rather than forcing the diagnostic Stage 2 into the critical path.
+The preferred first-boot path uses upstream m1n1's native payload scanner/kboot implementation rather than forcing the diagnostic Stage 2 into the critical path.
 
-The packed image order is:
+The packed image is ordinary upstream-supported concatenation:
 
 ```text
 m1n1.bin
   + t8103-j407.dtb
-  + "m1n1_initramfs" + u32_le(size) + initramfs.cpio.gz
+  + initramfs.cpio.gz
   + Linux Image
 ```
 
-m1n1 recognizes the J407 DTB by `compatible = "apple,j407"`, registers the initramfs, recognizes the final ARM64 Image, starts secondary CPUs, patches the Linux FDT and schedules the kernel as its normal `next_stage`. The kernel is deliberately last because m1n1 cannot infer where a size-less uncompressed inline Linux Image ends.
+The DTB is directly recognized as FDT. The gzip initramfs is decompressed by m1n1 and then recognized as CPIO. The final uncompressed ARM64 `Image` is deliberately last because m1n1 can recognize it but cannot infer the end of a size-less inline kernel in order to continue scanning beyond it.
 
-`scripts/pack-m1n1-j407.py` validates and creates this chain. `.github/workflows/j407-image.yml` builds the complete first-boot artifact.
+m1n1 then starts secondary CPUs, prepares the Linux FDT and schedules the kernel through its normal kboot/`next_stage` path. `scripts/pack-m1n1-j407.py` validates and creates this exact chain, and `.github/workflows/j407-image.yml` builds the complete artifact.
 
 The custom `ipad-linux-stage2.bin` remains useful for controlled diagnostics and for future entry mechanisms that want a versioned `boot_info` ABI rather than invoking m1n1 kboot directly.
+
+## Firmware framebuffer
+
+The J407 board DTS provides a disabled `simple-framebuffer` placeholder under `/chosen`, following the same shape expected by m1n1 kboot. If Apple's boot arguments contain a valid framebuffer, m1n1 patches its physical range, width, height, stride and format before Linux entry. If no framebuffer is available, it stays disabled and UART remains the primary bring-up console.
+
+This gives us a low-risk visual fallback without claiming native J407 DCP support.
 
 ## SMP
 
@@ -79,9 +85,9 @@ For the native m1n1 first-boot path, upstream `kboot_prepare_dt()` performs the 
 1. Produce a reproducible `j407-m1n1-linux.bin` from current upstream m1n1 + mainline Linux.
 2. UART0 earlycon and PID1 initramfs output.
 3. SMP/AIC/timer stability through m1n1 kboot.
-4. ANS2/NVMe using the now-verified T8103 addresses/IRQ/SART path.
-5. Verify the single J407 USB-C controller/PHY/DART route.
-6. Firmware/simple framebuffer if the boot environment leaves one usable.
+4. Firmware simple-framebuffer if iBoot leaves a usable video buffer.
+5. ANS2/NVMe using the verified T8103 addresses/IRQ/SART path.
+6. Verify the single J407 USB-C controller/PHY/DART route.
 7. Native DCP/display, then GPU.
 8. J407-specific Wi-Fi/BT, touch, audio and remaining peripherals.
 
