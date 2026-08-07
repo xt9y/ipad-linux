@@ -4,6 +4,8 @@ LD := ld.lld
 OBJCOPY := llvm-objcopy
 OBJDUMP := llvm-objdump
 READELF := llvm-readelf
+NM := llvm-nm
+PYTHON := python3
 
 PLATFORM := j407
 PLATFORM_DIR := src/platform/$(PLATFORM)
@@ -35,7 +37,7 @@ OBJS := \
 	build/debug.o \
 	build/uart.o
 
-all: $(TARGET).elf verify-relocs $(TARGET).bin $(TARGET).dis
+all: $(TARGET).elf $(TARGET).bin verify-image $(TARGET).dis
 
 build:
 	mkdir -p build
@@ -109,10 +111,17 @@ verify-relocs: $(TARGET).elf
 $(TARGET).bin: $(TARGET).elf
 	$(OBJCOPY) -O binary $< $@
 
+verify-image: $(TARGET).elf $(TARGET).bin verify-relocs scripts/check-stage2-image.py
+	$(PYTHON) scripts/check-stage2-image.py \
+		--elf $(TARGET).elf \
+		--bin $(TARGET).bin \
+		--nm $(NM) \
+		--readelf $(READELF)
+
 $(TARGET).dis: $(TARGET).elf
 	$(OBJDUMP) -d $< > $@
 
 clean:
 	rm -rf build
 
-.PHONY: all clean verify-relocs
+.PHONY: all clean verify-relocs verify-image
