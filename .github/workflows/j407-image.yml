@@ -216,8 +216,11 @@ jobs:
             echo "m1n1=$(git -C m1n1 rev-parse HEAD)"
           } > ipad-linux/build/j407/SOURCE_COMMITS
 
-          sha256sum ipad-linux/build/j407/* \
-            > ipad-linux/build/j407/SHA256SUMS
+          (
+            cd ipad-linux/build/j407
+            sha256sum * > SHA256SUMS
+            ! grep -q '/' SHA256SUMS
+          )
           ls -lh ipad-linux/build/j407
           cat ipad-linux/build/j407/SOURCE_COMMITS
 
