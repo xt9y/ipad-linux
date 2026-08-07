@@ -3,16 +3,15 @@
 .type _start, %function
 
 _start:
-    /*
-     * Execution environment is deliberately unspecified for now.
-     * Do not touch MMIO or assume a particular exception level here.
-     */
+    /* x0 is reserved for an optional struct boot_info pointer. */
+    mov x19, x0
 
-    /* Temporary stack supplied by the linker script. */
+    /* Temporary internal stack. The image load address is still provisional. */
     adrp x0, __stack_top
     add  x0, x0, :lo12:__stack_top
     mov  sp, x0
 
+    mov x0, x19
     bl kernel_main
 
 1:
