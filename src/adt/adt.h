@@ -25,3 +25,11 @@ int adt_node_property(struct adt_node_view node, const char *name, struct adt_pr
 int adt_find_child(struct adt_node_view parent, const char *name, struct adt_node_view *out);
 int adt_find_node(struct adt_view adt, const char *path, struct adt_node_view *out);
 int adt_root_property(struct adt_view adt, const char *name, struct adt_property_view *out);
+
+/*
+ * Resolve a 64-bit Apple ADT reg tuple through ancestor ranges mappings.
+ * This currently supports the 2-address-cell/2-size-cell layouts used by
+ * T8103 arm-io and fails closed on other encodings.
+ */
+int adt_path_reg64(struct adt_view adt, const char *path, unsigned index,
+                   uint64_t *phys_addr, uint64_t *reg_size);
