@@ -55,6 +55,13 @@ jobs:
           dtc -I dtb -O dts build/test.dtb -o build/test.dts
           grep -q 'apple,j407' build/test.dts
 
+      - name: Run Linux FDT runtime patch tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/boot -Isrc/fdt -Isrc/memory \
+            tests/linux_fdt_test.c src/boot/linux_fdt.c src/fdt/fdt.c src/memory/memory.c \
+            -o build/linux_fdt_test
+          ./build/linux_fdt_test
+
       - name: Show image information
         run: |
           llvm-size build/payload.elf
