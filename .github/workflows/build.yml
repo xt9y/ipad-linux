@@ -43,6 +43,13 @@ jobs:
           clang -std=c17 -Wall -Wextra -Werror -Isrc/boot tests/boot_info_test.c -o build/boot_info_test
           ./build/boot_info_test
 
+      - name: Run m1n1 handoff builder tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/boot \
+            tests/m1n1_handoff_test.c src/boot/m1n1_handoff.c \
+            -o build/m1n1_handoff_test
+          ./build/m1n1_handoff_test
+
       - name: Run Linux boot-plan tests
         run: |
           clang -std=c17 -Wall -Wextra -Werror -Isrc/boot -Isrc/memory tests/linux_boot_test.c src/boot/linux_image.c src/boot/boot_plan.c src/memory/memory.c -o build/linux_boot_test
