@@ -16,6 +16,7 @@ LDFLAGS := -T src/payload/linker.ld -nostdlib
 OBJS := \
 	build/start.o \
 	build/exceptions.o \
+	build/linux_handoff.o \
 	build/main.o \
 	build/platform.o \
 	build/memory.o \
@@ -31,6 +32,9 @@ build/start.o: src/payload/start.S | build
 	$(CC) $(ASFLAGS) -c $< -o $@
 
 build/exceptions.o: src/arch/aarch64/exceptions.S | build
+	$(CC) $(ASFLAGS) -c $< -o $@
+
+build/linux_handoff.o: src/boot/linux_handoff.S | build
 	$(CC) $(ASFLAGS) -c $< -o $@
 
 build/main.o: src/payload/main.c | build
