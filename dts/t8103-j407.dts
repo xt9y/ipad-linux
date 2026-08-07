@@ -48,6 +48,14 @@
 };
 
 /*
+ * J407's public ADT marks uart0 as the boot console and its translated
+ * address/IRQ match mainline t8103.dtsi (0x235200000 / AIC IRQ 605).
+ */
+&serial0 {
+	status = "okay";
+};
+
+/*
  * CPU release state, usable-memory ranges, firmware versions, framebuffer
  * data and other boot-time values are intentionally absent. They must be
  * patched or supplied from the live boot environment/ADT.
