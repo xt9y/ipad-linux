@@ -40,6 +40,27 @@ def make_kit(root: pathlib.Path) -> None:
         "m1n1=2222222222222222\n",
         encoding="utf-8",
     )
+    (root / "TARGET").write_text(
+        "product_type=iPad13,16\n"
+        "board_config=J407AP\n"
+        "model=A2588\n"
+        "soc=T8103 / Apple M1\n"
+        "cpid=0x8103\n"
+        "bdid=0x10\n"
+        "reported_ipados=26.5\n"
+        "public_26.5_build=23F77\n",
+        encoding="utf-8",
+    )
+    for name in (
+        "HARDWARE_TEST.md",
+        "analyze-first-boot.py",
+        "build-hardware-report.py",
+        "host-preflight.py",
+        "verify-first-boot-kit.py",
+        "dump_live_adt.py",
+    ):
+        (root / name).write_text(f"test fixture: {name}\n", encoding="utf-8")
+
     (root / "j407-m1n1-linux.manifest.txt").write_text(
         "order=m1n1,dtb,gzip-initramfs,image\n", encoding="utf-8"
     )
@@ -91,6 +112,31 @@ class FirstBootKitVerifierTest(unittest.TestCase):
             )
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Image differs", result.stderr)
+
+    def test_wrong_target_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            make_kit(root)
+            target = root / "TARGET"
+            target.write_text(
+                target.read_text(encoding="utf-8").replace("iPad13,16", "iPad13,17"),
+                encoding="utf-8",
+            )
+            lines = []
+            for line in (root / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+                if line.endswith("  TARGET"):
+                    lines.append(f"{sha256(target)}  TARGET")
+                else:
+                    lines.append(line)
+            (root / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [sys.executable, str(TOOL), str(root)],
+                text=True,
+                capture_output=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("product_type=iPad13,16", result.stderr)
 
 
 if __name__ == "__main__":
