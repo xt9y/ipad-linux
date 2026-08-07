@@ -19,6 +19,7 @@ OBJS := \
 	build/system.o \
 	build/linux_handoff.o \
 	build/linux_image.o \
+	build/linux_fdt.o \
 	build/boot_plan.o \
 	build/main.o \
 	build/platform.o \
@@ -49,6 +50,9 @@ build/linux_handoff.o: src/boot/linux_handoff.S | build
 	$(CC) $(ASFLAGS) -c $< -o $@
 
 build/linux_image.o: src/boot/linux_image.c src/boot/linux_image.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/linux_fdt.o: src/boot/linux_fdt.c src/boot/linux_fdt.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/boot_plan.o: src/boot/boot_plan.c src/boot/boot_plan.h | build
