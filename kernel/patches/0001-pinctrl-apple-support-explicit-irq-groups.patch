@@ -65,7 +65,7 @@ diff --git a/drivers/pinctrl/pinctrl-apple-gpio.c b/drivers/pinctrl/pinctrl-appl
  
  		gpio_irq_chip_set_chip(girq, &apple_gpio_irqchip);
  		girq->parent_handler = apple_gpio_irq_handler;
-@@ -397,7 +399,14 @@ static int apple_gpio_register(struct apple_gpio_pinctrl *pctl)
+@@ -397,7 +399,15 @@ static int apple_gpio_register(struct apple_gpio_pinctrl *pctl)
  				goto out_free_irq_data;
  
  			girq->parents[i] = ret;
