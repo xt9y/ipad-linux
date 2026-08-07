@@ -24,6 +24,12 @@ int main(void)
 
     info.size = sizeof(info) - 1;
     assert(!boot_info_valid(&info));
+    info.size = sizeof(info);
+
+    info.cpu_release_count = IPL_MAX_CPU_RELEASES + 1;
+    assert(!boot_info_valid(&info));
+    info.cpu_release_count = IPL_MAX_CPU_RELEASES;
+    assert(boot_info_valid(&info));
 
     assert(offsetof(struct boot_info, flags) == 16);
     assert(offsetof(struct boot_info, memory_base) == 24);
@@ -34,7 +40,10 @@ int main(void)
     assert(offsetof(struct boot_info, linux_image_addr) == 96);
     assert(offsetof(struct boot_info, dtb_addr) == 112);
     assert(offsetof(struct boot_info, initrd_addr) == 128);
-    assert(sizeof(struct boot_info) == 176);
+    assert(offsetof(struct boot_info, cpu_release_count) == 144);
+    assert(offsetof(struct boot_info, cpu_releases) == 152);
+    assert(sizeof(struct boot_cpu_release) == 16);
+    assert(sizeof(struct boot_info) == 312);
 
     puts("boot_info tests passed");
     return 0;

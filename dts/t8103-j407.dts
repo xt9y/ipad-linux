@@ -18,18 +18,45 @@
 / {
 	compatible = "apple,j407", "apple,t8103", "apple,arm-platform";
 	model = "Apple iPad Air (5th generation, Wi-Fi)";
+	#address-cells = <2>;
+	#size-cells = <2>;
 
 	aliases {
 		serial0 = &serial0;
 	};
 
 	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
 		stdout-path = "serial0:115200n8";
+
+		/* Fixed-size placeholders patched by the entry loader when used. */
+		linux,initrd-start = <0 0>;
+		linux,initrd-end = <0 0>;
+	};
+
+	/*
+	 * T8103 DRAM starts at 0x8_00000000. The usable size is runtime data
+	 * and must account for firmware carveouts, so keep the reg size zero
+	 * until linux_fdt_patch_runtime() receives the entry contract.
+	 */
+	memory@800000000 {
+		device_type = "memory";
+		reg = <0x8 0x0 0x0 0x0>;
 	};
 };
 
 /*
- * RAM size, usable ranges, CPU release addresses, firmware versions,
- * framebuffer data and other boot-time values are intentionally absent.
- * They must be patched by the loader from the live boot environment/ADT.
+ * J407's public ADT marks uart0 as the boot console and its translated
+ * address/IRQ match mainline t8103.dtsi (0x235200000 / AIC IRQ 605).
+ */
+&serial0 {
+	status = "okay";
+};
+
+/*
+ * CPU release state, usable-memory ranges, firmware versions, framebuffer
+ * data and other boot-time values are intentionally absent. They must be
+ * patched or supplied from the live boot environment/ADT.
  */

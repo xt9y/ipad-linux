@@ -38,10 +38,25 @@ jobs:
           clang -std=c17 -Wall -Wextra -Werror -Isrc/adt tests/adt_reg_test.c src/adt/adt.c src/adt/adt_reg.c -o build/adt_reg_test
           ./build/adt_reg_test
 
+      - name: Run J407 discovery tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror \
+            -Isrc/adt -Isrc/platform/j407 \
+            tests/j407_discovery_test.c src/platform/j407/discovery.c \
+            src/adt/adt.c src/adt/adt_reg.c -o build/j407_discovery_test
+          ./build/j407_discovery_test
+
       - name: Run boot ABI tests
         run: |
           clang -std=c17 -Wall -Wextra -Werror -Isrc/boot tests/boot_info_test.c -o build/boot_info_test
           ./build/boot_info_test
+
+      - name: Run m1n1 handoff builder tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/boot \
+            tests/m1n1_handoff_test.c src/boot/m1n1_handoff.c \
+            -o build/m1n1_handoff_test
+          ./build/m1n1_handoff_test
 
       - name: Run Linux boot-plan tests
         run: |
@@ -54,6 +69,21 @@ jobs:
           ./build/fdt_test build/test.dtb
           dtc -I dtb -O dts build/test.dtb -o build/test.dts
           grep -q 'apple,j407' build/test.dts
+
+      - name: Run Linux FDT runtime patch tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/boot -Isrc/fdt -Isrc/memory \
+            tests/linux_fdt_test.c src/boot/linux_fdt.c src/fdt/fdt.c src/memory/memory.c \
+            -o build/linux_fdt_test
+          ./build/linux_fdt_test
+
+      - name: Run J407 SMP contract tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror \
+            -Isrc/boot -Isrc/fdt -Isrc/memory -Isrc/platform/j407 \
+            tests/j407_smp_test.c src/platform/j407/smp_contract.c src/memory/memory.c \
+            -o build/j407_smp_test
+          ./build/j407_smp_test
 
       - name: Show image information
         run: |

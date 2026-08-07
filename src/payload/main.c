@@ -6,13 +6,17 @@
 #include "debug.h"
 #include "discovery.h"
 #include "fdt.h"
+#include "linux_fdt.h"
 #include "linux_handoff.h"
 #include "linux_image.h"
 #include "memory.h"
 #include "platform.h"
 #include "quiesce.h"
+#include "smp_contract.h"
 #include "system.h"
 #include "uart.h"
+
+#define DAIF_ALL_MASKED 0x3c0ull
 
 static void loader_debug_write(const char *data, size_t size, void *ctx)
 {
@@ -23,10 +27,93 @@ static void loader_debug_write(const char *data, size_t size, void *ctx)
         fn(data, (uint64_t)size, (void *)(uintptr_t)boot->debug_ctx);
 }
 
-static int execution_can_touch_physical_mmio(const struct boot_info *boot)
+static int runtime_cpu_contract_valid(const struct boot_info *boot)
 {
-    return boot->current_el >= 1 && boot->current_el <= 2 &&
-           !(boot->flags & BOOT_INFO_MMU_ENABLED);
+    uint64_t runtime_el = aarch64_current_el();
+    int runtime_mmu = aarch64_mmu_enabled();
+    int reported_mmu = (boot->flags & BOOT_INFO_MMU_ENABLED) != 0;
+
+    if (runtime_el != 1 && runtime_el != 2) {
+        debug_puts("ipad-linux: unsupported runtime exception level\n");
+        return 0;
+    }
+
+    if (runtime_el != boot->current_el) {
+        debug_puts("ipad-linux: loader/runtime EL mismatch\n");
+        return 0;
+    }
+
+    if (runtime_mmu != reported_mmu) {
+        debug_puts("ipad-linux: loader/runtime MMU mismatch\n");
+        return 0;
+    }
+
+    if (runtime_mmu) {
+        debug_puts("ipad-linux: Linux entry requires MMU off\n");
+        return 0;
+    }
+
+    if (!aarch64_cntfrq()) {
+        debug_puts("ipad-linux: CNTFRQ is not initialized\n");
+        return 0;
+    }
+
+    return 1;
+}
+
+static int execution_can_touch_physical_mmio(void)
+{
+    uint64_t runtime_el = aarch64_current_el();
+    return (runtime_el == 1 || runtime_el == 2) && !aarch64_mmu_enabled();
+}
+
+static int patch_runtime_dtb(const struct boot_info *boot,
+                             struct memory_range ram,
+                             size_t dtb_total)
+{
+    if (!(boot->flags & BOOT_INFO_DTB_MUTABLE)) {
+        if (boot->flags & BOOT_INFO_HAS_CPU_RELEASES) {
+            debug_puts("ipad-linux: CPU release table requires mutable DTB\n");
+            return 0;
+        }
+        return 1;
+    }
+
+    struct linux_fdt_runtime runtime = {
+        .memory_path = IPAD_LINUX_MEMORY_PATH,
+        .ram = ram,
+        .initrd_addr = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_addr : 0,
+        .initrd_size = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_size : 0,
+    };
+
+    if (!linux_fdt_patch_runtime((void *)(uintptr_t)boot->dtb_addr,
+                                 dtb_total, &runtime)) {
+        debug_puts("ipad-linux: runtime DTB patch failed\n");
+        return 0;
+    }
+
+    debug_puts("ipad-linux: runtime DTB patched\n");
+
+    if (boot->flags & BOOT_INFO_HAS_CPU_RELEASES) {
+        struct j407_smp_patch smp;
+
+        if (!j407_build_smp_patch(boot, ram, &smp)) {
+            debug_puts("ipad-linux: invalid J407 SMP release contract\n");
+            return 0;
+        }
+
+        if (!linux_fdt_patch_cpu_releases((void *)(uintptr_t)boot->dtb_addr,
+                                          dtb_total,
+                                          smp.entries,
+                                          smp.count)) {
+            debug_puts("ipad-linux: CPU release DTB patch failed\n");
+            return 0;
+        }
+
+        debug_puts("ipad-linux: eight T8103 CPU release slots patched\n");
+    }
+
+    return 1;
 }
 
 static int try_linux_handoff(const struct boot_info *boot, struct memory_range ram)
@@ -38,7 +125,7 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
     if ((boot->flags & need) != need)
         return 0;
 
-    if (boot->flags & BOOT_INFO_MMU_ENABLED)
+    if (!runtime_cpu_contract_valid(boot))
         return 0;
 
     if (!memory_range_contains(ram, boot->linux_image_addr, 64) ||
@@ -55,24 +142,61 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
                           (size_t)boot->dtb_size, &dtb_total))
         return 0;
 
+    if (!patch_runtime_dtb(boot, ram, dtb_total))
+        return 0;
+
     struct linux_boot_plan plan = {
         .ram = ram,
         .kernel_addr = boot->linux_image_addr,
         .kernel_buffer_size = boot->linux_image_size,
         .dtb_addr = boot->dtb_addr,
         .dtb_size = dtb_total,
-        .current_el = boot->current_el,
-        .mmu_enabled = 0,
+        .initrd_addr = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_addr : 0,
+        .initrd_size = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_size : 0,
+        .current_el = aarch64_current_el(),
+        .mmu_enabled = aarch64_mmu_enabled(),
         .image = image,
     };
 
     if (!linux_boot_plan_validate(&plan))
         return 0;
 
+    /*
+     * At EL2 we own CNTVOFF_EL2 and normalize it to zero for the boot CPU.
+     * The entry adapter must give secondary holding-pen CPUs the same timer
+     * state before advertising BOOT_INFO_HAS_CPU_RELEASES.
+     * At EL1, CNTHCTL_EL2/CNTVOFF preparation remains an entry-loader duty.
+     */
+    if (plan.current_el == 2) {
+        if (!aarch64_zero_cntvoff_el2() || aarch64_cntvoff_el2() != 0) {
+            debug_puts("ipad-linux: failed to normalize CNTVOFF_EL2\n");
+            return 0;
+        }
+    }
+
+    uint64_t kernel_cache_size = image.image_size ? image.image_size : boot->linux_image_size;
+
+    /*
+     * Linux requires the loaded Image to be clean to the Point of Coherency
+     * and free of stale instruction-cache entries. The DTB/initrd are data,
+     * so they only need the data-cache clean here.
+     */
+    aarch64_clean_dcache_range(boot->linux_image_addr, kernel_cache_size);
+    aarch64_clean_dcache_range(boot->dtb_addr, (uint64_t)dtb_total);
+    if (plan.initrd_size)
+        aarch64_clean_dcache_range(plan.initrd_addr, plan.initrd_size);
+    aarch64_invalidate_icache_range(boot->linux_image_addr, kernel_cache_size);
+
     debug_puts("ipad-linux: Linux handoff contract valid\n");
+    debug_puts("ipad-linux: kernel/DTB caches synchronized\n");
     debug_puts("ipad-linux: entering Linux\n");
 
     aarch64_mask_interrupts();
+    if ((aarch64_daif() & DAIF_ALL_MASKED) != DAIF_ALL_MASKED) {
+        debug_puts("ipad-linux: failed to mask DAIF\n");
+        return 0;
+    }
+
     linux_enter(boot->linux_image_addr, boot->dtb_addr);
 }
 
@@ -109,7 +233,7 @@ void kernel_main(const struct boot_info *boot)
             };
 
             if (adt_validate(adt)) {
-                int physical_mmio = execution_can_touch_physical_mmio(boot);
+                int physical_mmio = execution_can_touch_physical_mmio();
 
                 if (!loader_debug && physical_mmio)
                     debug_uart_from_adt(adt, 0);

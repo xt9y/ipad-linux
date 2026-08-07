@@ -19,11 +19,13 @@ OBJS := \
 	build/system.o \
 	build/linux_handoff.o \
 	build/linux_image.o \
+	build/linux_fdt.o \
 	build/boot_plan.o \
 	build/main.o \
 	build/platform.o \
 	build/discovery.o \
 	build/quiesce.o \
+	build/smp_contract.o \
 	build/memory.o \
 	build/adt.o \
 	build/adt_reg.o \
@@ -51,6 +53,9 @@ build/linux_handoff.o: src/boot/linux_handoff.S | build
 build/linux_image.o: src/boot/linux_image.c src/boot/linux_image.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
+build/linux_fdt.o: src/boot/linux_fdt.c src/boot/linux_fdt.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
 build/boot_plan.o: src/boot/boot_plan.c src/boot/boot_plan.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -64,6 +69,9 @@ build/discovery.o: $(PLATFORM_DIR)/discovery.c $(PLATFORM_DIR)/discovery.h | bui
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/quiesce.o: $(PLATFORM_DIR)/quiesce.c $(PLATFORM_DIR)/quiesce.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/smp_contract.o: $(PLATFORM_DIR)/smp_contract.c $(PLATFORM_DIR)/smp_contract.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/memory.o: src/memory/memory.c src/memory/memory.h | build
