@@ -77,6 +77,44 @@
 };
 
 /*
+ * J407's public ADT contains exactly one USB DRD path: usb-drd0, dart-usb0
+ * and atc-phy0. Their physical ranges and IRQs independently match the first
+ * T8103 USB path in mainline. Keep the second SoC path disabled because no
+ * J407 board evidence exists for usb-drd1/atc-phy1.
+ */
+&dwc3_0 {
+	status = "okay";
+};
+
+&dwc3_0_dart_0 {
+	status = "okay";
+};
+
+&dwc3_0_dart_1 {
+	status = "okay";
+};
+
+&atcphy0 {
+	status = "okay";
+};
+
+&dwc3_1 {
+	status = "disabled";
+};
+
+&dwc3_1_dart_0 {
+	status = "disabled";
+};
+
+&dwc3_1_dart_1 {
+	status = "disabled";
+};
+
+&atcphy1 {
+	status = "disabled";
+};
+
+/*
  * J407's built-in radio lives behind pci-bridge0, which corresponds to
  * T8103 port00. The public ADT identifies WLAN as BCM4387C2 and PCI function
  * 0; Bluetooth is the sibling PCI function 1 of the same BCM4387 module.
@@ -88,6 +126,10 @@
  * m1n1 kboot fills the per-device values through the wifi0/bluetooth0 aliases:
  * WLAN/BT addresses, antenna SKU, WLAN calibration and Bluetooth Taurus data.
  */
+&pcie0 {
+	status = "okay";
+};
+
 &port00 {
 	bus-range = <1 1>;
 
