@@ -11,6 +11,12 @@ on:
       - 'dts/**'
       - 'kernel/**'
       - 'initramfs/**'
+      - 'docs/first-boot.md'
+      - 'integration/m1n1/dump_live_adt.py'
+      - 'tools/analyze-first-boot.py'
+      - 'tools/build-hardware-report.py'
+      - 'tools/host-preflight.py'
+      - 'tools/verify-first-boot-kit.py'
       - 'scripts/build-initramfs.sh'
       - 'scripts/check-j407-dtb.sh'
       - 'scripts/pack-m1n1-j407.py'
@@ -23,6 +29,12 @@ on:
       - 'dts/**'
       - 'kernel/**'
       - 'initramfs/**'
+      - 'docs/first-boot.md'
+      - 'integration/m1n1/dump_live_adt.py'
+      - 'tools/analyze-first-boot.py'
+      - 'tools/build-hardware-report.py'
+      - 'tools/host-preflight.py'
+      - 'tools/verify-first-boot-kit.py'
       - 'scripts/build-initramfs.sh'
       - 'scripts/check-j407-dtb.sh'
       - 'scripts/pack-m1n1-j407.py'
@@ -106,7 +118,7 @@ jobs:
             ../ipad-linux/kernel/j407-bringup.config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           for option in \
-            ARCH_APPLE \
+            ARCH_APPLE PINCTRL_APPLE_GPIO \
             SERIAL_SAMSUNG SERIAL_SAMSUNG_CONSOLE \
             APPLE_MAILBOX APPLE_RTKIT APPLE_SART APPLE_DART \
             NVME_APPLE PCI PCIE_APPLE \
@@ -170,7 +182,7 @@ jobs:
             --manifest build/j407/j407-m1n1-linux.manifest.txt
           test -s build/j407/j407-m1n1-linux.bin
 
-      - name: Assemble first-boot artifact directory
+      - name: Assemble hardware-test kit
         run: |
           cp linux/arch/arm64/boot/Image ipad-linux/build/j407/Image
           cp linux/arch/arm64/boot/dts/apple/t8103-j407.dtb \
@@ -180,6 +192,23 @@ jobs:
           cp m1n1/build/m1n1.bin ipad-linux/build/j407/m1n1.bin
           cp linux/.config ipad-linux/build/j407/linux.config
           cp ipad-linux/build/payload.bin ipad-linux/build/j407/ipad-linux-stage2.bin
+          cp ipad-linux/docs/first-boot.md ipad-linux/build/j407/HARDWARE_TEST.md
+          cp ipad-linux/tools/analyze-first-boot.py ipad-linux/build/j407/analyze-first-boot.py
+          cp ipad-linux/tools/build-hardware-report.py ipad-linux/build/j407/build-hardware-report.py
+          cp ipad-linux/tools/host-preflight.py ipad-linux/build/j407/host-preflight.py
+          cp ipad-linux/tools/verify-first-boot-kit.py ipad-linux/build/j407/verify-first-boot-kit.py
+          cp ipad-linux/integration/m1n1/dump_live_adt.py ipad-linux/build/j407/dump_live_adt.py
+
+          {
+            echo "product_type=iPad13,16"
+            echo "board_config=J407AP"
+            echo "model=A2588"
+            echo "soc=T8103 / Apple M1"
+            echo "cpid=0x8103"
+            echo "bdid=0x10"
+            echo "reported_ipados=26.5"
+            echo "public_26.5_build=23F77"
+          } > ipad-linux/build/j407/TARGET
 
           {
             echo "ipad-linux=$(git -C ipad-linux rev-parse HEAD)"
@@ -192,7 +221,12 @@ jobs:
           ls -lh ipad-linux/build/j407
           cat ipad-linux/build/j407/SOURCE_COMMITS
 
-      - name: Upload J407 first-boot image
+      - name: Self-verify hardware-test kit
+        working-directory: ipad-linux
+        run: |
+          python3 tools/verify-first-boot-kit.py build/j407
+
+      - name: Upload J407 first-boot hardware-test kit
         uses: actions/upload-artifact@v4
         with:
           name: j407-first-boot-image
