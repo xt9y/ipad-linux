@@ -231,6 +231,49 @@ static void print_uname(void)
     dprintf(STDOUT_FILENO, "  machine=%s\n", u.machine);
 }
 
+static void write_display_summary(unsigned cpus, unsigned nvme,
+                                  unsigned usb, unsigned typec,
+                                  int wifi4387, int bt4387,
+                                  unsigned wlan, unsigned bluetooth,
+                                  unsigned graphics, unsigned input,
+                                  unsigned sound)
+{
+    int fd = open("/dev/tty0", O_WRONLY | O_CLOEXEC | O_NOCTTY);
+    if (fd < 0)
+        return;
+
+    dprintf(fd,
+            "\n"
+            "============================================================\n"
+            "ipad-linux J407 FIRST BOOT\n"
+            "Linux reached PID 1.\n"
+            "CPUs:       %u/8  %s\n"
+            "NVMe:       %s\n"
+            "USB:        %s\n"
+            "Type-C:     %s\n"
+            "BCM4387:    Wi-Fi %s / BT %s\n"
+            "WLAN iface: %s\n"
+            "BT class:   %s\n"
+            "Graphics:   %s\n"
+            "Input:      %s\n"
+            "Sound:      %s\n"
+            "FIRST_BOOT_DIAGNOSTICS_COMPLETE\n"
+            "Photograph this screen if serial output is unavailable.\n"
+            "============================================================\n",
+            cpus, cpus == 8 ? "PASS" : "INCOMPLETE",
+            nvme ? "DETECTED" : "NOT DETECTED",
+            usb ? "ENUMERATED" : "NOT ENUMERATED",
+            typec ? "REGISTERED" : "NOT REGISTERED",
+            wifi4387 ? "PCI OK" : "PCI MISSING",
+            bt4387 ? "PCI OK" : "PCI MISSING",
+            wlan ? "PRESENT" : "ABSENT",
+            bluetooth ? "PRESENT" : "ABSENT",
+            graphics ? "ENUMERATED" : "NOT ENUMERATED",
+            input ? "ENUMERATED" : "NOT ENUMERATED",
+            sound ? "ENUMERATED" : "NOT ENUMERATED");
+    close(fd);
+}
+
 int main(void)
 {
     static const char banner[] =
@@ -300,6 +343,9 @@ int main(void)
     dprintf(STDOUT_FILENO, "  SOUND=%s\n", sound ? "ENUMERATED" : "NOT_ENUMERATED");
     dprintf(STDOUT_FILENO, "  framebuffer/DRM=%s\n",
             graphics ? "ENUMERATED" : "NOT_ENUMERATED");
+
+    write_display_summary(cpus, nvme, usb, typec, wifi4387, bt4387,
+                          wlan, bluetooth, graphics, input, sound);
 
     dprintf(STDOUT_FILENO,
             "\nipad-linux: FIRST_BOOT_DIAGNOSTICS_COMPLETE\n"
