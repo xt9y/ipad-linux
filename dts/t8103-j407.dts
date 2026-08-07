@@ -31,6 +31,13 @@
 		ranges;
 		stdout-path = "serial0:115200n8";
 
+		/*
+		 * Mainline's Apple S5L earlycon driver can derive the UART from
+		 * stdout-path. Keep the first bring-up noisy and independent of a
+		 * root filesystem; a later loader may replace bootargs in its DTB.
+		 */
+		bootargs = "earlycon console=ttySAC0,115200 loglevel=8";
+
 		/* Fixed-size placeholders patched by the entry loader when used. */
 		linux,initrd-start = <0 0>;
 		linux,initrd-end = <0 0>;
