@@ -41,6 +41,18 @@
 		/* Fixed-size placeholders patched by the entry loader when used. */
 		linux,initrd-start = <0 0>;
 		linux,initrd-end = <0 0>;
+
+		/*
+		 * m1n1 kboot looks up /chosen/framebuffer, patches this node from
+		 * Apple's live video boot arguments and removes status when a usable
+		 * firmware framebuffer exists. Keeping it disabled is safe when no
+		 * framebuffer survives the handoff.
+		 */
+		framebuffer0: framebuffer@0 {
+			compatible = "apple,simple-framebuffer", "simple-framebuffer";
+			reg = <0 0 0 0>;
+			status = "disabled";
+		};
 	};
 
 	/*
@@ -63,7 +75,6 @@
 };
 
 /*
- * CPU release state, usable-memory ranges, firmware versions, framebuffer
- * data and other boot-time values are intentionally absent. They must be
- * patched or supplied from the live boot environment/ADT.
+ * CPU release state, usable-memory ranges and firmware-derived values are
+ * intentionally patched/supplied from the live boot environment/ADT.
  */
