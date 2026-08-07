@@ -21,12 +21,49 @@ Use upstream `t8103.dtsi` for SoC topology. Do **not** include `t8103-jxxx.dtsi`
 | ANS mailbox | J407 ANS register tuple 0 begins at child `0x77400000`; its interrupt list includes 583/584/585/586 | `ans_mbox: mbox@277408000` is inside the same translated ANS window and uses IRQs 583-586 | verified | Reuse T8103 mailbox/RTKit description |
 | NVMe / ANS2 | J407 ANS tuple 3 is child `0x7bcc0000`, size `0x60000`; `nvme-interrupt-idx = 4` selects IRQ 590 | `nvme@27bcc0000`, size `0x40000`, IRQ 590, compatible `apple,t8103-nvme-ans2`; ANS reg `0x277400000` | verified addresses/IRQ | Reuse T8103 ANS2 node; mainline uses conservative subranges of Apple ADT windows |
 | SART-ANS | J407 `sart-ans` is child `0x7bc50000`, size `0x10000`, `sart-version = 2` | `sart@27bc50000`, size `0x10000`, compatible `apple,t8103-sart` | verified | Reuse T8103 SART node |
-| USB controller 0 | J407 contains `usb-drd0` and `dart-usb0`; T8103 USB/ATC blocks are present in ADT | `dwc3_0: usb@382280000` plus DARTs and `atcphy0` | likely | J407 has one external USB-C port; verify the exact controller/PHY and DART mapping before enabling board routing |
-| USB controller 1 | T8103 provides a second DWC3/ATC path used on some Macs | `dwc3_1` + `atcphy1` | unknown for J407 | Keep board routing absent until J407 ADT proves the path is used |
+| USB controller 0 | J407 `usb-drd0` starts at `0x382280000`; first IRQ 777. `dart-usb0` has `0x382f00000` and `0x382f80000`, IRQ 781. `atc-phy0` is present and linked from usb-drd0 | `dwc3_0: usb@382280000`, IRQ 777; two DARTs at the same addresses/IRQ 781; `atcphy0` at `0x383000000` | verified SoC/controller path | Reuse T8103 DWC3/DART/ATC PHY. Keep J407-specific Type-C mux/role/connector routing separate until verified |
+| USB controller 1 | T8103 provides a second DWC3/ATC path used on some Macs | `dwc3_1` + `atcphy1` | unknown for J407 | Do not copy the Mac second-port routing without J407 evidence |
 | PCIe Wi-Fi/BT | iPad has Wi-Fi/BT, but Mac `t8103-jxxx.dtsi` hardcodes PCIe devices/board types for Macs | T8103 PCIe controller/DART support exists | unknown board wiring | Do not copy Mac Wi-Fi/BT nodes. Derive J407 transport/chip/firmware data independently |
 | Display / DCP | J407 ADT contains `dcp0-expert`, DCP ASC data, display DART/scaler and `dispext0,t8103` data | no directly reusable J407 board description in current mainline T8103 DTS | unknown / major port | Use m1n1-patched firmware simple-framebuffer first; native DCP later |
 | GPU | M1/T8103 GPU is supported by the Asahi stack at SoC level | Linux/Asahi AGX support exists for T8103 | SoC reusable, board integration unknown | Defer until memory/IOMMU/firmware handoff is stable |
 | Watchdog | J407 ADT exposes watchdog state; T8103 map has WDT at `0x23d2b0000` | Linux Apple watchdog support can be evaluated | likely | Diagnostic Stage 2 only disables discovered watchdogs in a constrained MMU-off context |
+
+## J407 arm-io translation and USB proof
+
+J407's `arm-io/ranges` is not a single fixed offset. Two relevant entries are:
+
+```text
+child 0x000000000 -> parent 0x200000000, size 0x100000000
+child 0x380000000 -> parent 0x380000000, size 0x180000000
+```
+
+This means UART/ANS low child addresses use the `+0x200000000` translation, while the `0x38...` USB/ATC aperture is identity-mapped.
+
+The public J407 `usb-drd0` primary register window is:
+
+```text
+0x382280000 size 0x11800
+```
+
+Mainline conservatively divides the useful part into:
+
+```text
+0x382280000 size 0xcd00   dwc3-core
+0x38228cd00 size 0x3200   dwc3-apple
+IRQ 777
+```
+
+J407 `dart-usb0` contains exactly:
+
+```text
+0x382f00000 size 0x4000
+0x382f80000 size 0x4000
+IRQ 781
+```
+
+which exactly matches mainline's two `dwc3_0` DART nodes. J407's `atc-phy0` detailed register list also falls inside the same T8103 physical groups which mainline exposes as aggregated ATC PHY regions, including `0x383000000`, `0x383050000`, `0x380000000` and `0x382a90000`.
+
+So the DWC3/DART/ATC-PHY **SoC path is verified**. What is intentionally still absent from the J407 board DTS is Mac-specific USB-C port-controller, connector and mux routing.
 
 ## First-boot path
 
@@ -87,7 +124,7 @@ For the native m1n1 first-boot path, upstream `kboot_prepare_dt()` performs the 
 3. SMP/AIC/timer stability through m1n1 kboot.
 4. Firmware simple-framebuffer if iBoot leaves a usable video buffer.
 5. ANS2/NVMe using the verified T8103 addresses/IRQ/SART path.
-6. Verify the single J407 USB-C controller/PHY/DART route.
+6. USB0 core/DART/PHY, then identify J407-specific Type-C role/mux control.
 7. Native DCP/display, then GPU.
 8. J407-specific Wi-Fi/BT, touch, audio and remaining peripherals.
 
