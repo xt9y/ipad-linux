@@ -12,6 +12,7 @@
 #include "memory.h"
 #include "platform.h"
 #include "quiesce.h"
+#include "smp_contract.h"
 #include "system.h"
 #include "uart.h"
 
@@ -66,6 +67,55 @@ static int execution_can_touch_physical_mmio(void)
     return (runtime_el == 1 || runtime_el == 2) && !aarch64_mmu_enabled();
 }
 
+static int patch_runtime_dtb(const struct boot_info *boot,
+                             struct memory_range ram,
+                             size_t dtb_total)
+{
+    if (!(boot->flags & BOOT_INFO_DTB_MUTABLE)) {
+        if (boot->flags & BOOT_INFO_HAS_CPU_RELEASES) {
+            debug_puts("ipad-linux: CPU release table requires mutable DTB\n");
+            return 0;
+        }
+        return 1;
+    }
+
+    struct linux_fdt_runtime runtime = {
+        .memory_path = IPAD_LINUX_MEMORY_PATH,
+        .ram = ram,
+        .initrd_addr = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_addr : 0,
+        .initrd_size = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_size : 0,
+    };
+
+    if (!linux_fdt_patch_runtime((void *)(uintptr_t)boot->dtb_addr,
+                                 dtb_total, &runtime)) {
+        debug_puts("ipad-linux: runtime DTB patch failed\n");
+        return 0;
+    }
+
+    debug_puts("ipad-linux: runtime DTB patched\n");
+
+    if (boot->flags & BOOT_INFO_HAS_CPU_RELEASES) {
+        struct j407_smp_patch smp;
+
+        if (!j407_build_smp_patch(boot, ram, &smp)) {
+            debug_puts("ipad-linux: invalid J407 SMP release contract\n");
+            return 0;
+        }
+
+        if (!linux_fdt_patch_cpu_releases((void *)(uintptr_t)boot->dtb_addr,
+                                          dtb_total,
+                                          smp.entries,
+                                          smp.count)) {
+            debug_puts("ipad-linux: CPU release DTB patch failed\n");
+            return 0;
+        }
+
+        debug_puts("ipad-linux: eight T8103 CPU release slots patched\n");
+    }
+
+    return 1;
+}
+
 static int try_linux_handoff(const struct boot_info *boot, struct memory_range ram)
 {
     const uint64_t need = BOOT_INFO_HAS_LINUX_IMAGE |
@@ -92,22 +142,8 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
                           (size_t)boot->dtb_size, &dtb_total))
         return 0;
 
-    if (boot->flags & BOOT_INFO_DTB_MUTABLE) {
-        struct linux_fdt_runtime runtime = {
-            .memory_path = IPAD_LINUX_MEMORY_PATH,
-            .ram = ram,
-            .initrd_addr = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_addr : 0,
-            .initrd_size = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_size : 0,
-        };
-
-        if (!linux_fdt_patch_runtime((void *)(uintptr_t)boot->dtb_addr,
-                                     dtb_total, &runtime)) {
-            debug_puts("ipad-linux: runtime DTB patch failed\n");
-            return 0;
-        }
-
-        debug_puts("ipad-linux: runtime DTB patched\n");
-    }
+    if (!patch_runtime_dtb(boot, ram, dtb_total))
+        return 0;
 
     struct linux_boot_plan plan = {
         .ram = ram,
@@ -127,7 +163,8 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
 
     /*
      * At EL2 we own CNTVOFF_EL2 and normalize it to zero for the boot CPU.
-     * Secondary CPUs must receive the same value when SMP bring-up lands.
+     * The entry adapter must give secondary holding-pen CPUs the same timer
+     * state before advertising BOOT_INFO_HAS_CPU_RELEASES.
      * At EL1, CNTHCTL_EL2/CNTVOFF preparation remains an entry-loader duty.
      */
     if (plan.current_el == 2) {
