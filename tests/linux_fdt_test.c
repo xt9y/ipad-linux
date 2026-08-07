@@ -21,6 +21,16 @@ static int build_template(uint8_t *blob, size_t capacity, size_t *out_size)
         !fdt_prop_string(&b, "device_type", "memory") ||
         !fdt_prop_u64_pair(&b, "reg", 0, 0) ||
         !fdt_end_node(&b) ||
+        !fdt_begin_node(&b, "cpus") ||
+        !fdt_begin_node(&b, "cpu@0") ||
+        !fdt_prop_string(&b, "enable-method", "spin-table") ||
+        !fdt_prop_u64(&b, "cpu-release-addr", 0) ||
+        !fdt_end_node(&b) ||
+        !fdt_begin_node(&b, "cpu@10100") ||
+        !fdt_prop_string(&b, "enable-method", "spin-table") ||
+        !fdt_prop_u64(&b, "cpu-release-addr", 0) ||
+        !fdt_end_node(&b) ||
+        !fdt_end_node(&b) ||
         !fdt_end_node(&b) ||
         !fdt_finish(&b, out_size))
         return 0;
@@ -47,7 +57,23 @@ int main(void)
 
     assert(linux_fdt_patch_runtime(blob, size, &runtime));
 
-    /* No initrd is also valid and does not require touching chosen values. */
+    struct linux_fdt_cpu_release cpus[] = {
+        { .cpu_path = "/cpus/cpu@0", .release_addr = 0x812340000ull },
+        { .cpu_path = "/cpus/cpu@10100", .release_addr = 0x812340080ull },
+    };
+    assert(linux_fdt_patch_cpu_releases(blob, size, cpus,
+                                        sizeof(cpus) / sizeof(cpus[0])));
+
+    cpus[1].release_addr = 0;
+    assert(!linux_fdt_patch_cpu_releases(blob, size, cpus,
+                                         sizeof(cpus) / sizeof(cpus[0])));
+    cpus[1].release_addr = 0x812340080ull;
+
+    cpus[1].cpu_path = "/cpus/cpu@dead";
+    assert(!linux_fdt_patch_cpu_releases(blob, size, cpus,
+                                         sizeof(cpus) / sizeof(cpus[0])));
+
+    /* No initrd is valid; mutable templates are explicitly cleared to zero. */
     assert(build_template(blob, sizeof(blob), &size));
     runtime.initrd_addr = 0;
     runtime.initrd_size = 0;
