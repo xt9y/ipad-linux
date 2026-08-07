@@ -3,7 +3,7 @@
 
 The analyzer is intentionally heuristic: it never guesses a hardware result
 which is not explicitly present in the log. Its main purpose is to turn one
-UART capture into a concise bring-up checklist.
+UART/USB-console capture into a concise bring-up checklist.
 """
 
 from __future__ import annotations
@@ -50,6 +50,10 @@ def parse_summary(text: str) -> dict[str, object]:
         "typec": explicit_state("TYPEC"),
         "wifi4387": explicit_state("BCM4387-WIFI"),
         "bt4387": explicit_state("BCM4387-BT"),
+        "wlan_interface": explicit_state("WLAN-INTERFACE"),
+        "bluetooth_class": explicit_state("BLUETOOTH-CLASS"),
+        "input": explicit_state("INPUT"),
+        "sound": explicit_state("SOUND"),
         "graphics": explicit_state("framebuffer/DRM"),
         "cpu_nodes": count("cpu_nodes"),
         "block_devices": count("block_devices"),
@@ -58,6 +62,11 @@ def parse_summary(text: str) -> dict[str, object]:
         "usb_entries": count("usb_entries"),
         "typec_entries": count("typec_entries"),
         "pci_functions": count("pci_functions"),
+        "net_interfaces": count("net_interfaces"),
+        "wlan_interfaces": count("wlan_interfaces"),
+        "bluetooth_entries": count("bluetooth_entries"),
+        "input_entries": count("input_entries"),
+        "sound_entries": count("sound_entries"),
         "aarch64_exception": "ipad-linux: AArch64 exception" in text,
         "linux_panic": "Kernel panic - not syncing" in text,
     }
@@ -77,6 +86,16 @@ def print_text(result: dict[str, object]) -> None:
         f"BCM4387: wifi={result['wifi4387']} bt={result['bt4387']} "
         f"(pci_functions={result['pci_functions']})"
     )
+    print(
+        f"network: wlan={result['wlan_interface']} "
+        f"(net={result['net_interfaces']}, wlan={result['wlan_interfaces']})"
+    )
+    print(
+        f"bluetooth-class: {result['bluetooth_class']} "
+        f"(entries={result['bluetooth_entries']})"
+    )
+    print(f"input: {result['input']} (entries={result['input_entries']})")
+    print(f"sound: {result['sound']} (entries={result['sound_entries']})")
     print(f"graphics: {result['graphics']} (entries={result['graphics_entries']})")
     print(f"stage2_exception: {result['aarch64_exception']}")
     print(f"kernel_panic: {result['linux_panic']}")
