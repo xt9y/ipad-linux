@@ -115,6 +115,20 @@
 };
 
 /*
+ * J407 exposes one Apple CD3217 USB-C/PD controller directly on i2c0 at
+ * address 0x38. Mainline models this family with apple,cd321x. The public ADT
+ * IRQ encoding has not yet been translated to Linux, so deliberately omit an
+ * interrupt and use the upstream driver's polling fallback. Connector/mux
+ * graph data remains separate until its J407 routing is independently proven.
+ */
+&i2c0 {
+	hpm0: usb-pd@38 {
+		compatible = "apple,cd321x";
+		reg = <0x38>;
+	};
+};
+
+/*
  * J407's built-in radio lives behind pci-bridge0, which corresponds to
  * T8103 port00. The public ADT identifies WLAN as BCM4387C2 and PCI function
  * 0; Bluetooth is the sibling PCI function 1 of the same BCM4387 module.
