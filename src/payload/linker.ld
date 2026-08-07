@@ -6,7 +6,6 @@ ENTRY(_start)
  * rejects linked AArch64 relocations.
  */
 IMAGE_BASE = 0;
-STACK_SIZE = 64K;
 
 SECTIONS
 {
@@ -34,11 +33,21 @@ SECTIONS
         __bss_end = .;
     }
 
-    . = ALIGN(16);
-    __stack_bottom = .;
-    . += STACK_SIZE;
-    __stack_top = .;
+    /*
+     * .stack is deliberately PROGBITS (emitted by start.S), not NOLOAD.
+     * This makes the flat payload self-contained: its file footprint reserves
+     * the exact 64 KiB stack storage used by _start.
+     */
+    .stack : ALIGN(16) {
+        __stack_bottom = .;
+        KEEP(*(.stack))
+        __stack_top = .;
+    }
+
     __image_end = .;
+
+    ASSERT((__stack_top - __stack_bottom) == 64K,
+           "bootstrap stack must remain exactly 64 KiB")
 
     /DISCARD/ : {
         *(.comment*)
