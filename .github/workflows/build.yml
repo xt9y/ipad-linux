@@ -19,15 +19,24 @@ jobs:
       - name: Build payload
         run: make
 
-      - name: Show ELF information
+      - name: Verify position independence
         run: |
           llvm-readelf -h build/payload.elf
+          llvm-readelf -r build/payload.elf
+          if llvm-readelf -r build/payload.elf | grep -q 'R_AARCH64_'; then
+            echo 'payload contains runtime relocations'
+            exit 1
+          fi
+
+      - name: Show image information
+        run: |
           llvm-size build/payload.elf
+          llvm-nm -n build/payload.elf | head -40
 
       - name: Upload payload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ipad-linux-payload
+          name: ipad-air-5-payload
           path: |
             build/payload.elf
             build/payload.bin
