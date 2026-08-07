@@ -3,7 +3,7 @@ name: j407-first-boot-image
 on:
   workflow_dispatch:
   push:
-    branches: [ ipad-air-5 ]
+    branches: [ ipad-air-5, 'integration/**' ]
     paths:
       - '.github/workflows/j407-image.yml'
       - 'Makefile'
@@ -97,9 +97,13 @@ jobs:
             ARCH_APPLE \
             SERIAL_SAMSUNG SERIAL_SAMSUNG_CONSOLE \
             APPLE_MAILBOX APPLE_RTKIT APPLE_SART APPLE_DART \
-            NVME_APPLE PCIE_APPLE \
-            CFG80211 WLAN BRCMFMAC BRCMFMAC_PCIE \
-            BT BT_HCIBCM4377 FW_LOADER; do
+            NVME_APPLE PCI PCIE_APPLE \
+            RFKILL CFG80211 WLAN BRCMFMAC BRCMFMAC_PCIE \
+            BT BT_HCIBCM4377 FW_LOADER \
+            USB USB_DWC3 USB_DWC3_DUAL_ROLE USB_ROLE_SWITCH \
+            TYPEC PHY_APPLE_ATC I2C I2C_APPLE TYPEC_TPS6598X \
+            DRM DRM_SIMPLEDRM DRM_FBDEV_EMULATION \
+            VT VT_CONSOLE FRAMEBUFFER_CONSOLE; do
               grep -q "^CONFIG_${option}=y" .config || {
                 echo "CONFIG_${option}=y was not resolved"
                 exit 1
@@ -125,10 +129,13 @@ jobs:
           grep -q 'serial@235200000' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'framebuffer@0' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'nvme@27bcc0000' ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'usb@382280000' ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'usb-pd@38' ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'apple,cd321x' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'pci14e4,4433' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'pci14e4,5f71' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'apple,lycheea' ipad-linux/build/j407/t8103-j407.compiled.dts
-          grep -q 'earlycon console=ttySAC0,115200 loglevel=8' \
+          grep -q 'earlycon console=tty0 console=ttySAC0,115200 loglevel=8' \
             ipad-linux/build/j407/t8103-j407.compiled.dts
 
       - name: Build upstream m1n1

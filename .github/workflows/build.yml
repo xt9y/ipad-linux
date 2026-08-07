@@ -41,7 +41,7 @@ jobs:
       - name: Run ADT function decoder tests
         run: |
           clang -std=c17 -Wall -Wextra -Werror -Isrc/adt \
-            tests/adt_function_test.c src/adt/adt_function.c \
+            tests/adt_function_test.c src/adt/adt_function.c src/adt/adt.c \
             -o build/adt_function_test
           ./build/adt_function_test
 

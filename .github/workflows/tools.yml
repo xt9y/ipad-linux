@@ -2,13 +2,15 @@ name: tools
 
 on:
   push:
-    branches: [ ipad-air-5 ]
+    branches: [ ipad-air-5, 'integration/**' ]
     paths:
       - '.github/workflows/tools.yml'
       - 'tools/**'
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
       - 'tests/analyze_first_boot_test.py'
+      - 'tests/j407_firmware_test.py'
+      - 'tests/adt_function_test.c'
       - 'src/adt/**'
   pull_request:
     branches: [ ipad-air-5 ]
@@ -18,6 +20,8 @@ on:
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
       - 'tests/analyze_first_boot_test.py'
+      - 'tests/j407_firmware_test.py'
+      - 'tests/adt_function_test.c'
       - 'src/adt/**'
 
 jobs:
@@ -31,11 +35,21 @@ jobs:
           mkdir -p build
           clang -std=c17 -Wall -Wextra -Werror -Isrc/adt \
             tools/adt-inspect.c src/adt/adt.c src/adt/adt_reg.c \
-            -o build/adt-inspect
+            src/adt/adt_function.c -o build/adt-inspect
           ./build/adt-inspect 2>&1 | grep -q 'usage:'
+
+      - name: Test ADT function decoder
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/adt \
+            tests/adt_function_test.c src/adt/adt_function.c src/adt/adt.c \
+            -o build/adt_function_test
+          ./build/adt_function_test
 
       - name: Test native m1n1 payload packer
         run: python3 -m unittest -v tests/pack_m1n1_test.py
 
       - name: Test first-boot serial analyzer
         run: python3 -m unittest -v tests/analyze_first_boot_test.py
+
+      - name: Test J407 firmware tree checker
+        run: python3 -m unittest -v tests/j407_firmware_test.py

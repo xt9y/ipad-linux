@@ -35,10 +35,11 @@
 
 		/*
 		 * Mainline's Apple S5L earlycon driver can derive the UART from
-		 * stdout-path. Keep the first bring-up noisy and independent of a
-		 * root filesystem; a later loader may replace bootargs in its DTB.
+		 * stdout-path. Keep ttySAC0 last so /dev/console remains the reliable
+		 * serial bring-up path, while tty0 mirrors kernel output when m1n1
+		 * successfully exposes iBoot's framebuffer through SimpleDRM/fbcon.
 		 */
-		bootargs = "earlycon console=ttySAC0,115200 loglevel=8";
+		bootargs = "earlycon console=tty0 console=ttySAC0,115200 loglevel=8";
 
 		/* Fixed-size placeholders patched by the entry loader when used. */
 		linux,initrd-start = <0 0>;
@@ -77,6 +78,58 @@
 };
 
 /*
+ * J407's public ADT contains exactly one USB DRD path: usb-drd0, dart-usb0
+ * and atc-phy0. Their physical ranges and IRQs independently match the first
+ * T8103 USB path in mainline. Keep the second SoC path disabled because no
+ * J407 board evidence exists for usb-drd1/atc-phy1.
+ */
+&dwc3_0 {
+	status = "okay";
+};
+
+&dwc3_0_dart_0 {
+	status = "okay";
+};
+
+&dwc3_0_dart_1 {
+	status = "okay";
+};
+
+&atcphy0 {
+	status = "okay";
+};
+
+&dwc3_1 {
+	status = "disabled";
+};
+
+&dwc3_1_dart_0 {
+	status = "disabled";
+};
+
+&dwc3_1_dart_1 {
+	status = "disabled";
+};
+
+&atcphy1 {
+	status = "disabled";
+};
+
+/*
+ * J407 exposes one Apple CD3217 USB-C/PD controller directly on i2c0 at
+ * address 0x38. Mainline models this family with apple,cd321x. The public ADT
+ * IRQ encoding has not yet been translated to Linux, so deliberately omit an
+ * interrupt and use the upstream driver's polling fallback. Connector/mux
+ * graph data remains separate until its J407 routing is independently proven.
+ */
+&i2c0 {
+	hpm0: usb-pd@38 {
+		compatible = "apple,cd321x";
+		reg = <0x38>;
+	};
+};
+
+/*
  * J407's built-in radio lives behind pci-bridge0, which corresponds to
  * T8103 port00. The public ADT identifies WLAN as BCM4387C2 and PCI function
  * 0; Bluetooth is the sibling PCI function 1 of the same BCM4387 module.
@@ -88,6 +141,10 @@
  * m1n1 kboot fills the per-device values through the wifi0/bluetooth0 aliases:
  * WLAN/BT addresses, antenna SKU, WLAN calibration and Bluetooth Taurus data.
  */
+&pcie0 {
+	status = "okay";
+};
+
 &port00 {
 	bus-range = <1 1>;
 
