@@ -50,12 +50,15 @@ jobs:
       - name: Install bare-metal Rust target
         run: rustup target install aarch64-unknown-none-softfloat
 
-      - name: Verify upstream SMP API contract
+      - name: Verify upstream next-stage and SMP API contract
         run: |
           grep -q 'void smp_start_secondaries(void)' m1n1/src/smp.h
           grep -q 'uint64_t smp_get_mpidr(int cpu)' m1n1/src/smp.h
           grep -q 'u64 smp_get_release_addr(int cpu)' m1n1/src/smp.h
           grep -q 'void smp_set_wfe_mode(bool new_mode)' m1n1/src/smp.h
+          grep -q 'extern struct vector_args next_stage' m1n1/src/utils.h
+          grep -q 'extern struct boot_args cur_boot_args' m1n1/src/xnuboot.h
+          grep -q 'extern void \*adt' m1n1/src/adt.h
 
       - name: Test ipad-linux handoff builder
         run: |
@@ -67,13 +70,22 @@ jobs:
             -o ipad-linux/build/m1n1_handoff_test
           ipad-linux/build/m1n1_handoff_test
 
-      - name: Compile J407 adapter with m1n1 flags
+      - name: Compile J407 overlay with m1n1 flags
         run: |
           mkdir -p ipad-linux/build
           make -C m1n1 invoke_cc ARCH=aarch64-linux-gnu- \
             CFILE="$GITHUB_WORKSPACE/ipad-linux/integration/m1n1/ipad_linux_adapter.c" \
             OBJFILE="$GITHUB_WORKSPACE/ipad-linux/build/ipad_linux_adapter.o"
-          test -s ipad-linux/build/ipad_linux_adapter.o
+          make -C m1n1 invoke_cc ARCH=aarch64-linux-gnu- \
+            CFILE="$GITHUB_WORKSPACE/ipad-linux/src/boot/m1n1_handoff.c" \
+            OBJFILE="$GITHUB_WORKSPACE/ipad-linux/build/m1n1_handoff.o"
+          aarch64-linux-gnu-ld -r \
+            ipad-linux/build/ipad_linux_adapter.o \
+            ipad-linux/build/m1n1_handoff.o \
+            -o ipad-linux/build/ipad_linux_m1n1_overlay.o
+          test -s ipad-linux/build/ipad_linux_m1n1_overlay.o
+          ! aarch64-linux-gnu-nm -u ipad-linux/build/ipad_linux_m1n1_overlay.o \
+            | grep -q 'm1n1_handoff_build'
 
       - name: Build upstream m1n1
         working-directory: m1n1
@@ -84,8 +96,10 @@ jobs:
           test -s m1n1/build/m1n1.bin
           test $(stat -c%s m1n1/build/m1n1.bin) -gt 2048
 
-      - name: Upload m1n1 artifact
+      - name: Upload m1n1 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: j407-next-stage-m1n1
-          path: m1n1/build/m1n1.bin
+          path: |
+            m1n1/build/m1n1.bin
+            ipad-linux/build/ipad_linux_m1n1_overlay.o
