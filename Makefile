@@ -8,7 +8,7 @@ READELF := llvm-readelf
 PLATFORM := j407
 PLATFORM_DIR := src/platform/$(PLATFORM)
 
-INCLUDES := -Isrc/boot -Isrc/adt -Isrc/memory -Isrc/debug -I$(PLATFORM_DIR)
+INCLUDES := -Isrc/boot -Isrc/adt -Isrc/memory -Isrc/debug -Isrc/arch/aarch64 -I$(PLATFORM_DIR)
 CFLAGS := --target=aarch64-none-elf -ffreestanding -fpie -fno-plt -fno-stack-protector -fno-builtin -nostdlib -Wall -Wextra -O2 $(INCLUDES)
 ASFLAGS := --target=aarch64-none-elf -ffreestanding -nostdlib
 LDFLAGS := -T src/payload/linker.ld -nostdlib
@@ -16,6 +16,7 @@ LDFLAGS := -T src/payload/linker.ld -nostdlib
 OBJS := \
 	build/start.o \
 	build/exceptions.o \
+	build/system.o \
 	build/linux_handoff.o \
 	build/main.o \
 	build/platform.o \
@@ -32,6 +33,9 @@ build/start.o: src/payload/start.S | build
 	$(CC) $(ASFLAGS) -c $< -o $@
 
 build/exceptions.o: src/arch/aarch64/exceptions.S | build
+	$(CC) $(ASFLAGS) -c $< -o $@
+
+build/system.o: src/arch/aarch64/system.S | build
 	$(CC) $(ASFLAGS) -c $< -o $@
 
 build/linux_handoff.o: src/boot/linux_handoff.S | build
