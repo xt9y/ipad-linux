@@ -10,10 +10,10 @@
 #define IPAD_BDID 0x10u
 
 struct platform_info {
-    const char *product_type;
-    const char *board_config;
-    const char *model_number;
-    const char *soc_name;
+    char product_type[16];
+    char board_config[16];
+    char model_number[16];
+    char soc_name[16];
     uint32_t cpid;
     uint32_t bdid;
 };
