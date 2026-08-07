@@ -18,6 +18,14 @@ struct fdt_header {
     uint32_t size_dt_struct;
 };
 
+static uint32_t read_be32(const uint8_t *p)
+{
+    return ((uint32_t)p[0] << 24) |
+           ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8) |
+           (uint32_t)p[3];
+}
+
 static uint32_t be32(uint32_t v)
 {
     return ((v & 0x000000ffu) << 24) |
@@ -41,6 +49,40 @@ static size_t cstr_len(const char *s)
     size_t n = 0;
     while (s && s[n]) ++n;
     return n;
+}
+
+int fdt_check_header(const void *data, size_t available, size_t *total_size)
+{
+    const uint8_t *p = (const uint8_t *)data;
+
+    if (!p || available < sizeof(struct fdt_header))
+        return 0;
+
+    if (read_be32(p) != FDT_MAGIC)
+        return 0;
+
+    uint32_t total = read_be32(p + 4);
+    uint32_t struct_off = read_be32(p + 8);
+    uint32_t strings_off = read_be32(p + 12);
+    uint32_t reserve_off = read_be32(p + 16);
+    uint32_t version = read_be32(p + 20);
+    uint32_t strings_size = read_be32(p + 32);
+    uint32_t struct_size = read_be32(p + 36);
+
+    if (total < sizeof(struct fdt_header) || total > available)
+        return 0;
+    if (version < 16 || version > 17)
+        return 0;
+    if (reserve_off < sizeof(struct fdt_header) || reserve_off + 16 > total)
+        return 0;
+    if (struct_off > total || struct_size > total - struct_off)
+        return 0;
+    if (strings_off > total || strings_size > total - strings_off)
+        return 0;
+
+    if (total_size)
+        *total_size = total;
+    return 1;
 }
 
 static int reserve_struct(struct fdt_builder *b, size_t n, uint8_t **out)
@@ -85,7 +127,7 @@ int fdt_begin(struct fdt_builder *b, void *buffer, size_t capacity)
 
     b->buffer = (uint8_t *)buffer;
     b->capacity = capacity;
-    b->struct_off = sizeof(struct fdt_header) + 16; /* terminating memreserve pair */
+    b->struct_off = sizeof(struct fdt_header) + 16;
     b->strings_off = capacity / 2;
     if (b->strings_off <= b->struct_off)
         return 0;
