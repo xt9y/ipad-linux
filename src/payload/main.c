@@ -6,6 +6,7 @@
 #include "debug.h"
 #include "discovery.h"
 #include "fdt.h"
+#include "linux_fdt.h"
 #include "linux_handoff.h"
 #include "linux_image.h"
 #include "memory.h"
@@ -85,6 +86,23 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
     if (!fdt_check_header((const void *)(uintptr_t)boot->dtb_addr,
                           (size_t)boot->dtb_size, &dtb_total))
         return 0;
+
+    if (boot->flags & BOOT_INFO_DTB_MUTABLE) {
+        struct linux_fdt_runtime runtime = {
+            .memory_path = IPAD_LINUX_MEMORY_PATH,
+            .ram = ram,
+            .initrd_addr = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_addr : 0,
+            .initrd_size = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_size : 0,
+        };
+
+        if (!linux_fdt_patch_runtime((void *)(uintptr_t)boot->dtb_addr,
+                                     dtb_total, &runtime)) {
+            debug_puts("ipad-linux: runtime DTB patch failed\n");
+            return 0;
+        }
+
+        debug_puts("ipad-linux: runtime DTB patched\n");
+    }
 
     struct linux_boot_plan plan = {
         .ram = ram,
