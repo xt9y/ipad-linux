@@ -13,6 +13,27 @@
 #include <sys/utsname.h>
 #include <unistd.h>
 
+static int write_all(int fd, const void *data, size_t size)
+{
+    const char *p = data;
+
+    while (size) {
+        ssize_t written = write(fd, p, size);
+        if (written < 0) {
+            if (errno == EINTR)
+                continue;
+            return 0;
+        }
+        if (written == 0)
+            return 0;
+
+        p += (size_t)written;
+        size -= (size_t)written;
+    }
+
+    return 1;
+}
+
 static void make_dir(const char *path)
 {
     if (mkdir(path, 0755) < 0 && errno != EEXIST)
@@ -50,14 +71,15 @@ static void dump_file(const char *label, const char *path, size_t limit)
         if (got <= 0)
             break;
 
-        write(STDOUT_FILENO, buffer, (size_t)got);
+        if (!write_all(STDOUT_FILENO, buffer, (size_t)got))
+            break;
         total += (size_t)got;
     }
 
     if (total == limit)
         dprintf(STDOUT_FILENO, "\n<truncated at %zu bytes>\n", limit);
     else
-        write(STDOUT_FILENO, "\n", 1);
+        (void)write_all(STDOUT_FILENO, "\n", 1);
 
     close(fd);
 }
@@ -219,7 +241,8 @@ int main(void)
         "If you can read this on ttySAC0, Linux reached PID 1.\n"
         "============================================================\n";
 
-    write(STDOUT_FILENO, banner, sizeof(banner) - 1);
+    if (!write_all(STDOUT_FILENO, banner, sizeof(banner) - 1))
+        return 1;
 
     mount_fs("devtmpfs", "/dev", "devtmpfs", 0, "mode=0755");
     mount_fs("proc", "/proc", "proc", 0, 0);
