@@ -19,8 +19,11 @@ import sys
 from typing import Any
 
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-KIT_VERIFIER = ROOT / "tools" / "verify-first-boot-kit.py"
+SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+if (SCRIPT_DIR / "verify-first-boot-kit.py").is_file():
+    KIT_VERIFIER = SCRIPT_DIR / "verify-first-boot-kit.py"
+else:
+    KIT_VERIFIER = SCRIPT_DIR.parent / "tools" / "verify-first-boot-kit.py"
 
 
 def command(name: str) -> str | None:
