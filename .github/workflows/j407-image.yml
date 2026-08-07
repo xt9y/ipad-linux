@@ -61,6 +61,16 @@ jobs:
             device-tree-compiler cpio file python3
           rustup target install aarch64-unknown-none-softfloat
 
+      - name: Apply J407 kernel patch series
+        working-directory: linux
+        run: |
+          for patch in ../ipad-linux/kernel/patches/*.patch; do
+            echo "applying $patch"
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+
       - name: Build ipad-linux diagnostic Stage 2
         working-directory: ipad-linux
         run: |
