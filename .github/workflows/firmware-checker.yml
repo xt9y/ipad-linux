@@ -1,0 +1,22 @@
+name: firmware-checker
+
+on:
+  push:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/firmware-checker.yml'
+      - 'tools/check-j407-firmware.py'
+      - 'tests/check_j407_firmware_test.py'
+  pull_request:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/firmware-checker.yml'
+      - 'tools/check-j407-firmware.py'
+      - 'tests/check_j407_firmware_test.py'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest -v tests/check_j407_firmware_test.py
