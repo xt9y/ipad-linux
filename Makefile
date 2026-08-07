@@ -3,12 +3,13 @@ CC := clang
 LD := ld.lld
 OBJCOPY := llvm-objcopy
 OBJDUMP := llvm-objdump
+READELF := llvm-readelf
 
 PLATFORM := j407
 PLATFORM_DIR := src/platform/$(PLATFORM)
 
 INCLUDES := -Isrc/boot -Isrc/adt -Isrc/memory -I$(PLATFORM_DIR)
-CFLAGS := --target=aarch64-none-elf -ffreestanding -fno-stack-protector -fno-builtin -nostdlib -Wall -Wextra -O2 $(INCLUDES)
+CFLAGS := --target=aarch64-none-elf -ffreestanding -fpie -fno-plt -fno-stack-protector -fno-builtin -nostdlib -Wall -Wextra -O2 $(INCLUDES)
 ASFLAGS := --target=aarch64-none-elf -ffreestanding -nostdlib
 LDFLAGS := -T src/payload/linker.ld -nostdlib
 
@@ -20,7 +21,7 @@ OBJS := \
 	build/memory.o \
 	build/adt.o
 
-all: $(TARGET).elf $(TARGET).bin $(TARGET).dis
+all: $(TARGET).elf verify-relocs $(TARGET).bin $(TARGET).dis
 
 build:
 	mkdir -p build
@@ -46,6 +47,9 @@ build/adt.o: src/adt/adt.c src/adt/adt.h | build
 $(TARGET).elf: $(OBJS) src/payload/linker.ld
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
 
+verify-relocs: $(TARGET).elf
+	@! $(READELF) -r $< | grep -q 'R_AARCH64_' || (echo 'error: payload contains runtime relocations' && $(READELF) -r $< && exit 1)
+
 $(TARGET).bin: $(TARGET).elf
 	$(OBJCOPY) -O binary $< $@
 
@@ -55,4 +59,4 @@ $(TARGET).dis: $(TARGET).elf
 clean:
 	rm -rf build
 
-.PHONY: all clean
+.PHONY: all clean verify-relocs
