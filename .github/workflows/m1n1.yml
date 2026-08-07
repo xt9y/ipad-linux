@@ -3,7 +3,7 @@ name: build-m1n1
 on:
   workflow_dispatch:
   push:
-    branches: [ ipad-air-5 ]
+    branches: [ ipad-air-5, 'integration/**' ]
     paths:
       - '.github/workflows/m1n1.yml'
       - 'docs/m1n1-integration.md'
@@ -50,7 +50,7 @@ jobs:
       - name: Install bare-metal Rust target
         run: rustup target install aarch64-unknown-none-softfloat
 
-      - name: Verify upstream next-stage and SMP API contract
+      - name: Verify upstream next-stage, SMP and ADT proxy API contract
         run: |
           grep -q 'void smp_start_secondaries(void)' m1n1/src/smp.h
           grep -q 'uint64_t smp_get_mpidr(int cpu)' m1n1/src/smp.h
@@ -59,6 +59,14 @@ jobs:
           grep -q 'extern struct vector_args next_stage' m1n1/src/utils.h
           grep -q 'extern struct boot_args cur_boot_args' m1n1/src/xnuboot.h
           grep -q 'extern void \*adt' m1n1/src/adt.h
+          grep -q 'def get_adt(self):' m1n1/proxyclient/m1n1/proxyutils.py
+          grep -q 'adt_base = (self.ba.devtree - self.ba.virt_base + self.ba.phys_base)' \
+            m1n1/proxyclient/m1n1/proxyutils.py
+
+      - name: Check live ADT dump helper
+        run: |
+          python3 -m py_compile ipad-linux/integration/m1n1/dump_live_adt.py
+          grep -q 'u.get_adt()' ipad-linux/integration/m1n1/dump_live_adt.py
 
       - name: Test ipad-linux handoff builder
         run: |
