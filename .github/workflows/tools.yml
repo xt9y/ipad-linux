@@ -9,6 +9,7 @@ on:
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
       - 'tests/analyze_first_boot_test.py'
+      - 'tests/j407_firmware_test.py'
       - 'tests/adt_function_test.c'
       - 'src/adt/**'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
       - 'tests/analyze_first_boot_test.py'
+      - 'tests/j407_firmware_test.py'
       - 'tests/adt_function_test.c'
       - 'src/adt/**'
 
@@ -48,3 +50,6 @@ jobs:
 
       - name: Test first-boot serial analyzer
         run: python3 -m unittest -v tests/analyze_first_boot_test.py
+
+      - name: Test J407 firmware tree checker
+        run: python3 -m unittest -v tests/j407_firmware_test.py
