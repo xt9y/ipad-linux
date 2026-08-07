@@ -62,6 +62,14 @@ jobs:
             -o build/linux_fdt_test
           ./build/linux_fdt_test
 
+      - name: Run J407 SMP contract tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror \
+            -Isrc/boot -Isrc/fdt -Isrc/memory -Isrc/platform/j407 \
+            tests/j407_smp_test.c src/platform/j407/smp_contract.c src/memory/memory.c \
+            -o build/j407_smp_test
+          ./build/j407_smp_test
+
       - name: Show image information
         run: |
           llvm-size build/payload.elf
