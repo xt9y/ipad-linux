@@ -21,27 +21,32 @@ int linux_fdt_patch_runtime(void *dtb, size_t available,
                                runtime->initrd_size))
         return 0;
 
+    uint64_t initrd_end = 0;
+    if (runtime->initrd_size) {
+        initrd_end = runtime->initrd_addr + runtime->initrd_size;
+        if (initrd_end < runtime->initrd_addr)
+            return 0;
+    }
+
     if (!fdt_setprop_u64_pair_inplace(dtb, total,
                                       runtime->memory_path, "reg",
                                       runtime->ram.base,
                                       runtime->ram.size))
         return 0;
 
-    if (runtime->initrd_size) {
-        uint64_t initrd_end = runtime->initrd_addr + runtime->initrd_size;
-        if (initrd_end < runtime->initrd_addr)
-            return 0;
+    /*
+     * Mutable templates always carry these placeholders. Patch them even
+     * without an initrd so a reused DTB can never retain stale addresses.
+     */
+    if (!fdt_setprop_u64_inplace(dtb, total,
+                                 "/chosen", "linux,initrd-start",
+                                 runtime->initrd_addr))
+        return 0;
 
-        if (!fdt_setprop_u64_inplace(dtb, total,
-                                     "/chosen", "linux,initrd-start",
-                                     runtime->initrd_addr))
-            return 0;
-
-        if (!fdt_setprop_u64_inplace(dtb, total,
-                                     "/chosen", "linux,initrd-end",
-                                     initrd_end))
-            return 0;
-    }
+    if (!fdt_setprop_u64_inplace(dtb, total,
+                                 "/chosen", "linux,initrd-end",
+                                 initrd_end))
+        return 0;
 
     return 1;
 }
