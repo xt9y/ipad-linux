@@ -3,7 +3,9 @@
 #define FDT_BEGIN_NODE 0x1u
 #define FDT_END_NODE   0x2u
 #define FDT_PROP       0x3u
+#define FDT_NOP        0x4u
 #define FDT_END        0x9u
+#define FDT_MAX_DEPTH  64
 
 struct fdt_header {
     uint32_t magic;
@@ -51,6 +53,92 @@ static size_t cstr_len(const char *s)
     return n;
 }
 
+static int bounded_cstr_len(const uint8_t *s, size_t available, size_t *out_len)
+{
+    if (!s || !out_len)
+        return 0;
+
+    for (size_t i = 0; i < available; ++i) {
+        if (s[i] == 0) {
+            *out_len = i;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int text_equals_bytes(const char *text, const uint8_t *bytes, size_t bytes_len)
+{
+    if (!text || !bytes)
+        return 0;
+
+    size_t i = 0;
+    while (text[i] && i < bytes_len) {
+        if ((uint8_t)text[i] != bytes[i])
+            return 0;
+        ++i;
+    }
+
+    return i == bytes_len && text[i] == '\0';
+}
+
+static int path_component_count(const char *path, size_t *out_count)
+{
+    if (!path || !out_count || path[0] != '/')
+        return 0;
+
+    size_t count = 0;
+    size_t i = 1;
+
+    while (path[i]) {
+        while (path[i] == '/')
+            ++i;
+        if (!path[i])
+            break;
+
+        ++count;
+        while (path[i] && path[i] != '/')
+            ++i;
+    }
+
+    *out_count = count;
+    return 1;
+}
+
+static int path_component_equals(const char *path, size_t wanted_index,
+                                 const uint8_t *name, size_t name_len)
+{
+    size_t index = 0;
+    size_t i = 1;
+
+    while (path[i]) {
+        while (path[i] == '/')
+            ++i;
+        if (!path[i])
+            break;
+
+        size_t start = i;
+        while (path[i] && path[i] != '/')
+            ++i;
+
+        if (index == wanted_index) {
+            size_t len = i - start;
+            if (len != name_len)
+                return 0;
+            for (size_t n = 0; n < len; ++n) {
+                if ((uint8_t)path[start + n] != name[n])
+                    return 0;
+            }
+            return 1;
+        }
+
+        ++index;
+    }
+
+    return 0;
+}
+
 int fdt_check_header(const void *data, size_t available, size_t *total_size)
 {
     const uint8_t *p = (const uint8_t *)data;
@@ -73,7 +161,8 @@ int fdt_check_header(const void *data, size_t available, size_t *total_size)
         return 0;
     if (version < 16 || version > 17)
         return 0;
-    if (reserve_off < sizeof(struct fdt_header) || reserve_off + 16 > total)
+    if (reserve_off < sizeof(struct fdt_header) || reserve_off > total ||
+        total - reserve_off < 16)
         return 0;
     if (struct_off > total || struct_size > total - struct_off)
         return 0;
@@ -194,6 +283,12 @@ int fdt_prop_u32(struct fdt_builder *b, const char *name, uint32_t value)
     return fdt_prop(b, name, &x, sizeof(x));
 }
 
+int fdt_prop_u64(struct fdt_builder *b, const char *name, uint64_t value)
+{
+    uint64_t x = be64(value);
+    return fdt_prop(b, name, &x, sizeof(x));
+}
+
 int fdt_prop_u64_pair(struct fdt_builder *b, const char *name, uint64_t a, uint64_t c)
 {
     uint64_t pair[2] = { be64(a), be64(c) };
@@ -234,4 +329,133 @@ int fdt_finish(struct fdt_builder *b, size_t *out_size)
     if (out_size)
         *out_size = total;
     return 1;
+}
+
+int fdt_setprop_inplace(void *dtb, size_t available,
+                        const char *path, const char *property,
+                        const void *data, uint32_t size)
+{
+    uint8_t *blob = (uint8_t *)dtb;
+    size_t total = 0;
+    size_t component_count = 0;
+
+    if (!blob || !property || (!data && size) ||
+        !path_component_count(path, &component_count) ||
+        !fdt_check_header(blob, available, &total))
+        return 0;
+
+    uint32_t struct_off = read_be32(blob + 8);
+    uint32_t strings_off = read_be32(blob + 12);
+    uint32_t strings_size = read_be32(blob + 32);
+    uint32_t struct_size = read_be32(blob + 36);
+
+    if ((size_t)struct_off + struct_size > total ||
+        (size_t)strings_off + strings_size > total)
+        return 0;
+
+    uint8_t *structure = blob + struct_off;
+    uint8_t *strings = blob + strings_off;
+    size_t cursor = 0;
+    int depth = -1;
+    uint8_t prefix_matches[FDT_MAX_DEPTH] = {0};
+
+    while (cursor + 4 <= struct_size) {
+        uint32_t token = read_be32(structure + cursor);
+        cursor += 4;
+
+        if (token == FDT_BEGIN_NODE) {
+            if (++depth >= FDT_MAX_DEPTH)
+                return 0;
+
+            size_t name_len = 0;
+            if (!bounded_cstr_len(structure + cursor, struct_size - cursor, &name_len))
+                return 0;
+
+            size_t encoded = align4(name_len + 1);
+            if (encoded > struct_size - cursor)
+                return 0;
+
+            if (depth == 0) {
+                prefix_matches[0] = name_len == 0;
+            } else {
+                prefix_matches[depth] = prefix_matches[depth - 1] &&
+                    (size_t)depth <= component_count &&
+                    path_component_equals(path, (size_t)depth - 1,
+                                          structure + cursor, name_len);
+            }
+
+            cursor += encoded;
+            continue;
+        }
+
+        if (token == FDT_END_NODE) {
+            if (depth < 0)
+                return 0;
+            prefix_matches[depth] = 0;
+            --depth;
+            continue;
+        }
+
+        if (token == FDT_PROP) {
+            if (cursor + 8 > struct_size)
+                return 0;
+
+            uint32_t prop_size = read_be32(structure + cursor);
+            uint32_t name_off = read_be32(structure + cursor + 4);
+            cursor += 8;
+
+            size_t padded = align4(prop_size);
+            if (padded > struct_size - cursor || name_off >= strings_size)
+                return 0;
+
+            size_t prop_name_len = 0;
+            if (!bounded_cstr_len(strings + name_off,
+                                  strings_size - name_off,
+                                  &prop_name_len))
+                return 0;
+
+            if (depth >= 0 && (size_t)depth == component_count &&
+                prefix_matches[depth] &&
+                text_equals_bytes(property, strings + name_off, prop_name_len)) {
+                if (prop_size != size)
+                    return 0;
+
+                const uint8_t *src = (const uint8_t *)data;
+                for (uint32_t i = 0; i < size; ++i)
+                    structure[cursor + i] = src[i];
+                return 1;
+            }
+
+            cursor += padded;
+            continue;
+        }
+
+        if (token == FDT_NOP)
+            continue;
+
+        if (token == FDT_END)
+            return 0;
+
+        return 0;
+    }
+
+    return 0;
+}
+
+int fdt_setprop_u64_inplace(void *dtb, size_t available,
+                            const char *path, const char *property,
+                            uint64_t value)
+{
+    uint64_t encoded = be64(value);
+    return fdt_setprop_inplace(dtb, available, path, property,
+                               &encoded, sizeof(encoded));
+}
+
+int fdt_setprop_u64_pair_inplace(void *dtb, size_t available,
+                                 const char *path, const char *property,
+                                 uint64_t a, uint64_t b)
+{
+    uint64_t encoded[2] = { be64(a), be64(b) };
+    return fdt_setprop_inplace(dtb, available, path, property,
+                               encoded, sizeof(encoded));
 }
