@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "adt.h"
+#include "adt_clock.h"
 #include "adt_function.h"
 
 struct reg_query {
@@ -138,6 +139,29 @@ static void print_string_property(struct adt_view adt,
     puts("\"");
 }
 
+static void print_boot_clock(struct adt_view adt,
+                             const char *label,
+                             const char *path,
+                             unsigned clock_index)
+{
+    uint32_t clock_id = 0;
+    uint32_t frequency_hz = 0;
+
+    printf("%-18s: ", label);
+    if (!adt_path_boot_clock(adt, path, clock_index,
+                             &clock_id, &frequency_hz)) {
+        puts("<not resolved>");
+        return;
+    }
+
+    printf("clock-id=%" PRIu32 " table-index=%" PRIu32
+           " frequency=%" PRIu32 " Hz",
+           clock_id, clock_id - 256u, frequency_hz);
+    if (!frequency_hz)
+        printf(" (runtime/template value unavailable)");
+    putchar('\n');
+}
+
 static int read_file(const char *path, uint8_t **out_data, size_t *out_size)
 {
     FILE *f = fopen(path, "rb");
@@ -204,6 +228,7 @@ int main(int argc, char **argv)
 
     puts("\nJ407 multitouch identity:");
     print_string_property(adt, "/arm-io/spi4/multi-touch", "bootloader-type");
+    print_boot_clock(adt, "spi4 boot clock", "/arm-io/spi4", 0);
     print_function_property(adt, "/arm-io/spi4/multi-touch", "function-enable_cs");
     print_function_property(adt, "/arm-io/spi4/multi-touch", "function-reset");
     print_function_property(adt, "/arm-io/spi4/multi-touch", "function-set_int_config");
