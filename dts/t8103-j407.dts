@@ -35,10 +35,11 @@
 
 		/*
 		 * Mainline's Apple S5L earlycon driver can derive the UART from
-		 * stdout-path. Keep the first bring-up noisy and independent of a
-		 * root filesystem; a later loader may replace bootargs in its DTB.
+		 * stdout-path. Keep ttySAC0 last so /dev/console remains the reliable
+		 * serial bring-up path, while tty0 mirrors kernel output when m1n1
+		 * successfully exposes iBoot's framebuffer through SimpleDRM/fbcon.
 		 */
-		bootargs = "earlycon console=ttySAC0,115200 loglevel=8";
+		bootargs = "earlycon console=tty0 console=ttySAC0,115200 loglevel=8";
 
 		/* Fixed-size placeholders patched by the entry loader when used. */
 		linux,initrd-start = <0 0>;
