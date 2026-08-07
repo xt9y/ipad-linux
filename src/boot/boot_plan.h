@@ -11,6 +11,8 @@ struct linux_boot_plan {
     uint64_t kernel_buffer_size;
     uint64_t dtb_addr;
     uint64_t dtb_size;
+    uint64_t initrd_addr;
+    uint64_t initrd_size;
     uint64_t current_el;
     int mmu_enabled;
     struct linux_image_info image;
