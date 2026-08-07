@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Apple iPad Air (5th generation, Wi-Fi)
+ *
+ * ProductType: iPad13,16
+ * target-type: J407
+ * SoC: T8103 / M1
+ *
+ * This is intentionally minimal. T8103 SoC topology belongs in upstream
+ * t8103.dtsi. Add J407-specific peripherals only after cross-checking them
+ * against the public J407 Apple Device Tree and/or live hardware.
+ */
+
+/dts-v1/;
+
+#include "t8103.dtsi"
+
+/ {
+	compatible = "apple,j407", "apple,t8103", "apple,arm-platform";
+	model = "Apple iPad Air (5th generation, Wi-Fi)";
+
+	aliases {
+		serial0 = &serial0;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+};
+
+/*
+ * RAM size, usable ranges, CPU release addresses, firmware versions,
+ * framebuffer data and other boot-time values are intentionally absent.
+ * They must be patched by the loader from the live boot environment/ADT.
+ */
