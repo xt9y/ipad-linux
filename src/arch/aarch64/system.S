@@ -30,6 +30,32 @@ aarch64_el1_mmu_enabled:
     ret
 .size aarch64_el1_mmu_enabled, . - aarch64_el1_mmu_enabled
 
+.global aarch64_mmu_enabled
+.type aarch64_mmu_enabled, %function
+aarch64_mmu_enabled:
+    mrs x1, CurrentEL
+    lsr x1, x1, #2
+
+    cmp x1, #2
+    b.eq 1f
+    cmp x1, #1
+    b.eq 2f
+
+    /* Fail closed outside the Linux-supported entry ELs. */
+    mov x0, #1
+    ret
+
+1:
+    mrs x0, SCTLR_EL2
+    and x0, x0, #1
+    ret
+
+2:
+    mrs x0, SCTLR_EL1
+    and x0, x0, #1
+    ret
+.size aarch64_mmu_enabled, . - aarch64_mmu_enabled
+
 .global aarch64_mask_interrupts
 .type aarch64_mask_interrupts, %function
 aarch64_mask_interrupts:
