@@ -8,7 +8,7 @@ READELF := llvm-readelf
 PLATFORM := j407
 PLATFORM_DIR := src/platform/$(PLATFORM)
 
-INCLUDES := -Isrc/boot -Isrc/adt -Isrc/memory -I$(PLATFORM_DIR)
+INCLUDES := -Isrc/boot -Isrc/adt -Isrc/memory -Isrc/debug -I$(PLATFORM_DIR)
 CFLAGS := --target=aarch64-none-elf -ffreestanding -fpie -fno-plt -fno-stack-protector -fno-builtin -nostdlib -Wall -Wextra -O2 $(INCLUDES)
 ASFLAGS := --target=aarch64-none-elf -ffreestanding -nostdlib
 LDFLAGS := -T src/payload/linker.ld -nostdlib
@@ -19,7 +19,8 @@ OBJS := \
 	build/main.o \
 	build/platform.o \
 	build/memory.o \
-	build/adt.o
+	build/adt.o \
+	build/debug.o
 
 all: $(TARGET).elf verify-relocs $(TARGET).bin $(TARGET).dis
 
@@ -42,6 +43,9 @@ build/memory.o: src/memory/memory.c src/memory/memory.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/adt.o: src/adt/adt.c src/adt/adt.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/debug.o: src/debug/debug.c src/debug/debug.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(TARGET).elf: $(OBJS) src/payload/linker.ld
