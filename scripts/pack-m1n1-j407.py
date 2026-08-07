@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Pack a self-contained m1n1 payload chain for J407.
 
-m1n1's payload scanner walks data appended at _payload_start. For our first
-bring-up image the safe order is:
+Upstream m1n1 supports payloads by simple concatenation. Our first-boot chain
+uses only formats that its normal payload scanner already understands:
 
     m1n1.bin
     t8103-j407.dtb
-    m1n1_initramfs + <u32 little-endian byte size> + initramfs.cpio.gz
+    initramfs.cpio.gz
     Linux Image
 
-The kernel is intentionally last because m1n1 cannot infer the end of an
-uncompressed inline Linux Image and therefore stops scanning once it finds it.
-At that point both the FDT and initramfs have already been registered.
+The uncompressed kernel is intentionally last: m1n1 can recognize it, but
+cannot infer where a size-less inline Image ends. The compressed initramfs is
+placed before it, so m1n1 can decompress/recognize the CPIO and continue
+scanning to the final kernel.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ import sys
 
 FDT_MAGIC = b"\xd0\x0d\xfe\xed"
 ARM64_IMAGE_MAGIC = b"ARM\x64"
-INITRAMFS_MAGIC = b"m1n1_initramfs"
+GZIP_MAGIC = b"\x1f\x8b"
 
 
 def read(path: pathlib.Path) -> bytes:
@@ -42,6 +43,14 @@ def validate_dtb(data: bytes, path: pathlib.Path) -> None:
         raise ValueError(
             f"{path}: FDT totalsize is {total}, file contains {len(data)} bytes; "
             "payload chaining requires an exact DTB"
+        )
+
+
+def validate_initramfs(data: bytes, path: pathlib.Path) -> None:
+    if not data.startswith(GZIP_MAGIC):
+        raise ValueError(
+            f"{path}: first-boot initramfs must be gzip-compressed for native "
+            "m1n1 payload scanning"
         )
 
 
@@ -82,13 +91,10 @@ def main() -> int:
         image = read(args.image)
 
         validate_dtb(dtb, args.dtb)
+        validate_initramfs(initramfs, args.initramfs)
         validate_image(image, args.image)
 
-        if len(initramfs) > 0xFFFFFFFF:
-            raise ValueError("initramfs is too large for m1n1's u32 payload size")
-
-        initrd_record = INITRAMFS_MAGIC + struct.pack("<I", len(initramfs)) + initramfs
-        packed = m1n1 + dtb + initrd_record + image
+        packed = m1n1 + dtb + initramfs + image
 
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_bytes(packed)
@@ -100,7 +106,7 @@ def main() -> int:
             f"initramfs_size={len(initramfs)} sha256={sha256(initramfs)}\n"
             f"image_size={len(image)} sha256={sha256(image)}\n"
             f"packed_size={len(packed)} sha256={sha256(packed)}\n"
-            "order=m1n1,dtb,initramfs-record,image\n"
+            "order=m1n1,dtb,gzip-initramfs,image\n"
         )
 
         manifest_path = args.manifest or args.output.with_suffix(args.output.suffix + ".txt")
