@@ -20,6 +20,7 @@ OBJS := \
 	build/linux_handoff.o \
 	build/linux_image.o \
 	build/linux_fdt.o \
+	build/linux_layout.o \
 	build/boot_plan.o \
 	build/main.o \
 	build/platform.o \
@@ -54,6 +55,9 @@ build/linux_image.o: src/boot/linux_image.c src/boot/linux_image.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/linux_fdt.o: src/boot/linux_fdt.c src/boot/linux_fdt.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/linux_layout.o: src/boot/linux_layout.c src/boot/linux_layout.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/boot_plan.o: src/boot/boot_plan.c src/boot/boot_plan.h | build
