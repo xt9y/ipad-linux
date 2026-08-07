@@ -14,6 +14,7 @@
 /dts-v1/;
 
 #include "t8103.dtsi"
+#include "t8103-j407-touch-foundation.dtsi"
 
 / {
 	compatible = "apple,j407", "apple,t8103", "apple,arm-platform";

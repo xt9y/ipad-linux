@@ -3,7 +3,7 @@ name: linux-bundle
 on:
   workflow_dispatch:
   push:
-    branches: [ ipad-air-5 ]
+    branches: [ ipad-air-5, 'integration/**' ]
     paths:
       - '.github/workflows/linux-dts.yml'
       - 'dts/**'
@@ -45,6 +45,16 @@ jobs:
             bc bison flex libssl-dev libelf-dev \
             device-tree-compiler cpio file
 
+      - name: Apply J407 kernel patch series
+        working-directory: linux
+        run: |
+          for patch in ../ipad-linux/kernel/patches/*.patch; do
+            echo "applying $patch"
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+
       - name: Build ARM64 bring-up initramfs
         working-directory: ipad-linux
         run: |
@@ -55,8 +65,12 @@ jobs:
 
       - name: Overlay J407 board DTS
         run: |
-          cp ipad-linux/dts/t8103-j407.dts linux/arch/arm64/boot/dts/apple/t8103-j407.dts
-          printf '%s\n' 'dtb-$(CONFIG_ARCH_APPLE) += t8103-j407.dtb' >> linux/arch/arm64/boot/dts/apple/Makefile
+          cp ipad-linux/dts/t8103-j407.dts \
+            linux/arch/arm64/boot/dts/apple/t8103-j407.dts
+          cp ipad-linux/dts/t8103-j407-touch-foundation.dtsi \
+            linux/arch/arm64/boot/dts/apple/t8103-j407-touch-foundation.dtsi
+          printf '%s\n' 'dtb-$(CONFIG_ARCH_APPLE) += t8103-j407.dtb' \
+            >> linux/arch/arm64/boot/dts/apple/Makefile
 
       - name: Configure J407 kernel
         working-directory: linux
@@ -82,6 +96,8 @@ jobs:
       - name: Inspect J407 DTB
         run: |
           test -s linux/arch/arm64/boot/dts/apple/t8103-j407.dtb
+          sh ipad-linux/scripts/check-j407-dtb.sh \
+            linux/arch/arm64/boot/dts/apple/t8103-j407.dtb
           dtc -I dtb -O dts \
             linux/arch/arm64/boot/dts/apple/t8103-j407.dtb \
             -o ipad-linux/build/j407-mainline.dts
@@ -90,6 +106,8 @@ jobs:
           grep -q 'serial@235200000' ipad-linux/build/j407-mainline.dts
           grep -q 'ttySAC0' ipad-linux/build/j407-mainline.dts
           grep -q 'memory@800000000' ipad-linux/build/j407-mainline.dts
+          grep -q 'pinctrl@24a820000' ipad-linux/build/j407-mainline.dts
+          grep -q 'pinctrl@23d1f0000' ipad-linux/build/j407-mainline.dts
 
       - name: Assemble boot bundle
         run: |

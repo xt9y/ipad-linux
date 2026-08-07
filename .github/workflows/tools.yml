@@ -10,6 +10,7 @@ on:
       - 'tests/pack_m1n1_test.py'
       - 'tests/analyze_first_boot_test.py'
       - 'tests/j407_firmware_test.py'
+      - 'tests/z2fw_test.py'
       - 'tests/adt_function_test.c'
       - 'src/adt/**'
   pull_request:
@@ -21,6 +22,7 @@ on:
       - 'tests/pack_m1n1_test.py'
       - 'tests/analyze_first_boot_test.py'
       - 'tests/j407_firmware_test.py'
+      - 'tests/z2fw_test.py'
       - 'tests/adt_function_test.c'
       - 'src/adt/**'
 
@@ -53,3 +55,6 @@ jobs:
 
       - name: Test J407 firmware tree checker
         run: python3 -m unittest -v tests/j407_firmware_test.py
+
+      - name: Test Z2FW touchscreen validator
+        run: python3 -m unittest -v tests/z2fw_test.py

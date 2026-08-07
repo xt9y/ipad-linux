@@ -109,6 +109,24 @@ need_hex "$hpm" reg "38"
 forbid_prop "$hpm" interrupts
 forbid_prop "$hpm" interrupt-parent
 
+# Touch-supporting J407 GPIO instances. The public ADT lists seven possible
+# parent IRQs but advertises only hardware groups 4,5,6 as supported. The
+# patched Apple GPIO driver therefore receives only the corresponding parents
+# and an explicit group map. Do not silently regress this to group 0.
+aop_gpio=/soc/pinctrl@24a820000
+need_node "$aop_gpio"
+need_string "$aop_gpio" compatible "apple,t8103-pinctrl apple,pinctrl"
+need_hex "$aop_gpio" apple,npins "2a"
+need_hex "$aop_gpio" apple,irq-groups "4 5 6"
+need_hex "$aop_gpio" interrupts "0 110 4 0 111 4 0 112 4"
+
+nub_gpio=/soc/pinctrl@23d1f0000
+need_node "$nub_gpio"
+need_string "$nub_gpio" compatible "apple,t8103-pinctrl apple,pinctrl"
+need_hex "$nub_gpio" apple,npins "17"
+need_hex "$nub_gpio" apple,irq-groups "4 5 6"
+need_hex "$nub_gpio" interrupts "0 14e 4 0 14f 4 0 150 4"
+
 # J407 APCIE port0 is verified from the public ADT. PERST# resolves to GPIO
 # 152 (matching t8103.dtsi), and the two functions are the BCM4387 combo chip.
 need_status /soc/pcie@690000000 okay

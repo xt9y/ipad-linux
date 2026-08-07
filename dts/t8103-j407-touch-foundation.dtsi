@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J407 touch-supporting GPIO controller instances.
+ *
+ * These nodes contain only values independently recovered from the public
+ * J407 Apple Device Tree. They intentionally do not describe the touchscreen
+ * itself yet: SPI4's parent clock, touch IRQ trigger and SMC/PMU power sequence
+ * still need separate verification.
+ */
+
+&{/soc} {
+	aop_gpio: pinctrl@24a820000 {
+		compatible = "apple,t8103-pinctrl", "apple,pinctrl";
+		reg = <0x2 0x4a820000 0x0 0x4000>;
+
+		gpio-controller;
+		#gpio-cells = <2>;
+		gpio-ranges = <&aop_gpio 0 0 42>;
+		apple,npins = <42>;
+
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		interrupt-parent = <&aic>;
+
+		/*
+		 * The ADT lists parent IRQs 268..274 for hardware groups 0..6,
+		 * but explicitly advertises only groups 4, 5 and 6 as supported.
+		 */
+		interrupts = <AIC_IRQ 272 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 273 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 274 IRQ_TYPE_LEVEL_HIGH>;
+		apple,irq-groups = <4 5 6>;
+	};
+
+	nub_gpio: pinctrl@23d1f0000 {
+		compatible = "apple,t8103-pinctrl", "apple,pinctrl";
+		reg = <0x2 0x3d1f0000 0x0 0x4000>;
+
+		gpio-controller;
+		#gpio-cells = <2>;
+		gpio-ranges = <&nub_gpio 0 0 23>;
+		apple,npins = <23>;
+
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		interrupt-parent = <&aic>;
+
+		/* Same ADT group policy as aop_gpio: only groups 4, 5 and 6. */
+		interrupts = <AIC_IRQ 334 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 335 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 336 IRQ_TYPE_LEVEL_HIGH>;
+		apple,irq-groups = <4 5 6>;
+	};
+};
