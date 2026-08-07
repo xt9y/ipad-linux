@@ -155,9 +155,17 @@ jobs:
           cp m1n1/build/m1n1.bin ipad-linux/build/j407/m1n1.bin
           cp linux/.config ipad-linux/build/j407/linux.config
           cp ipad-linux/build/payload.bin ipad-linux/build/j407/ipad-linux-stage2.bin
+
+          {
+            echo "ipad-linux=$(git -C ipad-linux rev-parse HEAD)"
+            echo "linux=$(git -C linux rev-parse HEAD)"
+            echo "m1n1=$(git -C m1n1 rev-parse HEAD)"
+          } > ipad-linux/build/j407/SOURCE_COMMITS
+
           sha256sum ipad-linux/build/j407/* \
             > ipad-linux/build/j407/SHA256SUMS
           ls -lh ipad-linux/build/j407
+          cat ipad-linux/build/j407/SOURCE_COMMITS
 
       - name: Upload J407 first-boot image
         uses: actions/upload-artifact@v4
