@@ -65,8 +65,12 @@ jobs:
 
       - name: Overlay J407 board DTS
         run: |
-          cp ipad-linux/dts/t8103-j407.dts linux/arch/arm64/boot/dts/apple/t8103-j407.dts
-          printf '%s\n' 'dtb-$(CONFIG_ARCH_APPLE) += t8103-j407.dtb' >> linux/arch/arm64/boot/dts/apple/Makefile
+          cp ipad-linux/dts/t8103-j407.dts \
+            linux/arch/arm64/boot/dts/apple/t8103-j407.dts
+          cp ipad-linux/dts/t8103-j407-touch-foundation.dtsi \
+            linux/arch/arm64/boot/dts/apple/t8103-j407-touch-foundation.dtsi
+          printf '%s\n' 'dtb-$(CONFIG_ARCH_APPLE) += t8103-j407.dtb' \
+            >> linux/arch/arm64/boot/dts/apple/Makefile
 
       - name: Configure J407 kernel
         working-directory: linux
@@ -102,6 +106,8 @@ jobs:
           grep -q 'serial@235200000' ipad-linux/build/j407-mainline.dts
           grep -q 'ttySAC0' ipad-linux/build/j407-mainline.dts
           grep -q 'memory@800000000' ipad-linux/build/j407-mainline.dts
+          grep -q 'pinctrl@24a820000' ipad-linux/build/j407-mainline.dts
+          grep -q 'pinctrl@23d1f0000' ipad-linux/build/j407-mainline.dts
 
       - name: Assemble boot bundle
         run: |
