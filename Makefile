@@ -33,6 +33,7 @@ OBJS := \
 	build/memory.o \
 	build/adt.o \
 	build/adt_reg.o \
+	build/adt_function.o \
 	build/fdt.o \
 	build/debug.o \
 	build/uart.o
@@ -91,6 +92,9 @@ build/adt.o: src/adt/adt.c src/adt/adt.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/adt_reg.o: src/adt/adt_reg.c src/adt/adt.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/adt_function.o: src/adt/adt_function.c src/adt/adt_function.h src/adt/adt.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/fdt.o: src/fdt/fdt.c src/fdt/fdt.h | build
