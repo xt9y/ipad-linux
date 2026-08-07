@@ -19,8 +19,11 @@ import sys
 from typing import Any
 
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-ANALYZER = ROOT / "tools" / "analyze-first-boot.py"
+SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+if (SCRIPT_DIR / "analyze-first-boot.py").is_file():
+    ANALYZER = SCRIPT_DIR / "analyze-first-boot.py"
+else:
+    ANALYZER = SCRIPT_DIR.parent / "tools" / "analyze-first-boot.py"
 
 
 def sha256_file(path: pathlib.Path) -> str:
