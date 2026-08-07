@@ -252,6 +252,7 @@ int main(void)
     dump_file("cmdline", "/proc/cmdline", 1024);
     dump_file("device-tree model", "/sys/firmware/devicetree/base/model", 512);
     dump_file("memory", "/proc/meminfo", 2048);
+    dump_file("interrupts", "/proc/interrupts", 8192);
 
     unsigned cpus = list_dir("online CPU nodes", "/sys/devices/system/cpu",
                              "cpu", 1);
@@ -260,6 +261,11 @@ int main(void)
     unsigned graphics = list_dir("graphics class", "/sys/class/graphics", 0, 0);
     unsigned usb = list_dir("USB device nodes", "/sys/bus/usb/devices", 0, 0);
     unsigned typec = list_dir("Type-C class", "/sys/class/typec", 0, 0);
+    unsigned net = list_dir("network interfaces", "/sys/class/net", 0, 0);
+    unsigned wlan = list_dir("wireless-like interfaces", "/sys/class/net", "wlan", 0);
+    unsigned bluetooth = list_dir("Bluetooth class", "/sys/class/bluetooth", 0, 0);
+    unsigned input = list_dir("input class", "/sys/class/input", 0, 0);
+    unsigned sound = list_dir("sound class", "/sys/class/sound", 0, 0);
 
     int wifi4387 = 0;
     int bt4387 = 0;
@@ -273,8 +279,14 @@ int main(void)
             "  graphics_entries=%u\n"
             "  usb_entries=%u\n"
             "  typec_entries=%u\n"
-            "  pci_functions=%u\n",
-            cpus, blocks, nvme, graphics, usb, typec, pci);
+            "  pci_functions=%u\n"
+            "  net_interfaces=%u\n"
+            "  wlan_interfaces=%u\n"
+            "  bluetooth_entries=%u\n"
+            "  input_entries=%u\n"
+            "  sound_entries=%u\n",
+            cpus, blocks, nvme, graphics, usb, typec, pci,
+            net, wlan, bluetooth, input, sound);
 
     dprintf(STDOUT_FILENO, "  SMP=%s\n", cpus == 8 ? "PASS" : "INCOMPLETE");
     dprintf(STDOUT_FILENO, "  ANS2/NVMe=%s\n", nvme ? "DETECTED" : "NOT_DETECTED");
@@ -282,6 +294,10 @@ int main(void)
     dprintf(STDOUT_FILENO, "  TYPEC=%s\n", typec ? "REGISTERED" : "NOT_REGISTERED");
     dprintf(STDOUT_FILENO, "  BCM4387-WIFI=%s\n", wifi4387 ? "DETECTED" : "NOT_DETECTED");
     dprintf(STDOUT_FILENO, "  BCM4387-BT=%s\n", bt4387 ? "DETECTED" : "NOT_DETECTED");
+    dprintf(STDOUT_FILENO, "  WLAN-INTERFACE=%s\n", wlan ? "PRESENT" : "ABSENT");
+    dprintf(STDOUT_FILENO, "  BLUETOOTH-CLASS=%s\n", bluetooth ? "PRESENT" : "ABSENT");
+    dprintf(STDOUT_FILENO, "  INPUT=%s\n", input ? "ENUMERATED" : "NOT_ENUMERATED");
+    dprintf(STDOUT_FILENO, "  SOUND=%s\n", sound ? "ENUMERATED" : "NOT_ENUMERATED");
     dprintf(STDOUT_FILENO, "  framebuffer/DRM=%s\n",
             graphics ? "ENUMERATED" : "NOT_ENUMERATED");
 
