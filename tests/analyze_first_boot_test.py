@@ -35,8 +35,15 @@ class FirstBootAnalyzerTest(unittest.TestCase):
               block_devices=2
               nvme_controllers=1
               graphics_entries=1
+              usb_entries=4
+              typec_entries=1
+              pci_functions=3
               SMP=PASS
               ANS2/NVMe=DETECTED
+              USB=ENUMERATED
+              TYPEC=REGISTERED
+              BCM4387-WIFI=DETECTED
+              BCM4387-BT=DETECTED
               framebuffer/DRM=ENUMERATED
             ipad-linux: FIRST_BOOT_DIAGNOSTICS_COMPLETE
             """
@@ -46,6 +53,12 @@ class FirstBootAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["cpu_nodes"], 8)
         self.assertEqual(result["smp"], "PASS")
         self.assertEqual(result["nvme"], "DETECTED")
+        self.assertEqual(result["usb"], "ENUMERATED")
+        self.assertEqual(result["typec"], "REGISTERED")
+        self.assertEqual(result["typec_entries"], 1)
+        self.assertEqual(result["wifi4387"], "DETECTED")
+        self.assertEqual(result["bt4387"], "DETECTED")
+        self.assertEqual(result["pci_functions"], 3)
         self.assertEqual(result["graphics"], "ENUMERATED")
         self.assertFalse(result["linux_panic"])
 
@@ -61,6 +74,9 @@ class FirstBootAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["last_stage"], "linux")
         self.assertTrue(result["linux_panic"])
         self.assertEqual(result["smp"], "unknown")
+        self.assertEqual(result["usb"], "unknown")
+        self.assertEqual(result["typec"], "unknown")
+        self.assertEqual(result["wifi4387"], "unknown")
 
     def test_stage2_exception(self):
         result = self.analyze(
