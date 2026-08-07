@@ -67,8 +67,12 @@ jobs:
           grep -q '^CONFIG_ARCH_APPLE=y' .config
           grep -q '^CONFIG_SERIAL_SAMSUNG=y' .config
           grep -q '^CONFIG_SERIAL_SAMSUNG_CONSOLE=y' .config
+          grep -q '^CONFIG_APPLE_MAILBOX=y' .config
+          grep -q '^CONFIG_APPLE_RTKIT=y' .config
+          grep -q '^CONFIG_APPLE_SART=y' .config
           grep -q '^CONFIG_APPLE_DART=y' .config
           grep -q '^CONFIG_NVME_APPLE=y' .config
+          grep -q '^CONFIG_PCIE_APPLE=y' .config
 
       - name: Build mainline Image and arm64 device trees
         working-directory: linux
