@@ -1,0 +1,86 @@
+From: ipad-linux J407 bring-up <noreply@example.invalid>
+Subject: [PATCH] pinctrl: apple: support explicit hardware IRQ groups
+
+Apple GPIO controllers expose up to seven hardware interrupt groups. The
+current driver assumes that the N parent interrupts listed in DT correspond to
+hardware groups 0..N-1, and assigns newly requested GPIO interrupts to group 0.
+
+That assumption does not hold for every Apple GPIO instance. J407's AOP GPIO
+controllers advertise only groups 4, 5 and 6 while using the same register
+layout and apple,t8103-pinctrl compatible supported by the existing driver.
+
+Add an optional apple,irq-groups property whose entries map each listed parent
+interrupt to its hardware group number. Preserve the existing 0..N-1 mapping
+when the property is absent. Assign newly started GPIO interrupts to the first
+available hardware group instead of hard-coding group 0.
+
+This is intentionally generic and keeps existing device trees behaviorally
+unchanged.
+---
+ Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml | 12 ++++++++++++
+ drivers/pinctrl/pinctrl-apple-gpio.c                          | 15 ++++++++++++---
+ 2 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml b/Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml
+--- a/Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml
++++ b/Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml
+@@ -64,6 +64,18 @@ properties:
+     minItems: 1
+     maxItems: 7
+ 
++  apple,irq-groups:
++    $ref: /schemas/types.yaml#/definitions/uint32-array
++    minItems: 1
++    maxItems: 7
++    items:
++      minimum: 0
++      maximum: 6
++    description:
++      Hardware interrupt group corresponding to each entry in interrupts.
++      If absent, groups are assigned sequentially starting at zero, matching
++      the behavior expected by existing Apple device trees.
++
+   interrupt-controller: true
+ 
+   '#interrupt-cells':
+diff --git a/drivers/pinctrl/pinctrl-apple-gpio.c b/drivers/pinctrl/pinctrl-apple-gpio.c
+--- a/drivers/pinctrl/pinctrl-apple-gpio.c
++++ b/drivers/pinctrl/pinctrl-apple-gpio.c
+@@ -270,9 +270,10 @@ static unsigned int apple_gpio_irq_startup(struct irq_data *data)
+ {
+ 	struct gpio_chip *chip = irq_data_get_irq_chip_data(data);
+ 	struct apple_gpio_pinctrl *pctl = gpiochip_get_data(chip);
++	u8 irqgrp = pctl->irqgrps[0];
+ 
+ 	apple_gpio_set_reg(pctl, data->hwirq, REG_GPIOx_GRP,
+-			   FIELD_PREP(REG_GPIOx_GRP, 0));
++			   FIELD_PREP(REG_GPIOx_GRP, irqgrp));
+ 
+ 	apple_gpio_direction_input(chip, data->hwirq);
+ 	apple_gpio_irq_unmask(data);
+@@ -379,6 +380,7 @@ static int apple_gpio_register(struct apple_gpio_pinctrl *pctl)
+ 	if (girq->num_parents) {
+ 		int i;
++		u32 irqgrp;
+ 
+ 		gpio_irq_chip_set_chip(girq, &apple_gpio_irqchip);
+ 		girq->parent_handler = apple_gpio_irq_handler;
+@@ -397,7 +399,14 @@ static int apple_gpio_register(struct apple_gpio_pinctrl *pctl)
+ 				goto out_free_irq_data;
+ 
+ 			girq->parents[i] = ret;
+-			pctl->irqgrps[i] = i;
++
++			ret = of_property_read_u32_index(pctl->dev->of_node,
++							 "apple,irq-groups", i, &irqgrp);
++			if (ret == -EINVAL)
++				irqgrp = i;
++			else if (ret || irqgrp > FIELD_MAX(REG_GPIOx_GRP))
++				goto out_free_irq_data;
++
++			pctl->irqgrps[i] = irqgrp;
+ 			irq_data[i] = &pctl->irqgrps[i];
+ 		}
+ 
+-- 
+2.50.1
