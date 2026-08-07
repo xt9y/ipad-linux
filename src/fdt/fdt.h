@@ -15,6 +15,7 @@ struct fdt_builder {
     int depth;
 };
 
+int fdt_check_header(const void *data, size_t available, size_t *total_size);
 int fdt_begin(struct fdt_builder *b, void *buffer, size_t capacity);
 int fdt_begin_node(struct fdt_builder *b, const char *name);
 int fdt_end_node(struct fdt_builder *b);
