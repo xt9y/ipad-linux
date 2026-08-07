@@ -22,6 +22,13 @@ REQUIRED = (
     "j407-m1n1-linux.manifest.txt",
     "linux.config",
     "SOURCE_COMMITS",
+    "TARGET",
+    "HARDWARE_TEST.md",
+    "analyze-first-boot.py",
+    "build-hardware-report.py",
+    "host-preflight.py",
+    "verify-first-boot-kit.py",
+    "dump_live_adt.py",
     "SHA256SUMS",
 )
 
@@ -126,6 +133,20 @@ def check_source_revisions(root: pathlib.Path) -> None:
             raise ValueError(f"SOURCE_COMMITS: missing valid {key}=<sha>")
 
 
+def check_target(root: pathlib.Path) -> None:
+    text = (root / "TARGET").read_text(encoding="utf-8")
+    required = {
+        "product_type": "iPad13,16",
+        "board_config": "J407AP",
+        "model": "A2588",
+        "cpid": "0x8103",
+        "bdid": "0x10",
+    }
+    for key, value in required.items():
+        if not re.search(rf"^{re.escape(key)}={re.escape(value)}$", text, re.MULTILINE):
+            raise ValueError(f"TARGET: expected {key}={value}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("artifact_dir", type=pathlib.Path)
@@ -142,6 +163,7 @@ def main() -> int:
         check_format(root)
         check_payload_chain(root)
         check_source_revisions(root)
+        check_target(root)
     except (OSError, ValueError, struct.error) as exc:
         print(f"verify-first-boot-kit: FAIL: {exc}", file=sys.stderr)
         return 1
