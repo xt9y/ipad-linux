@@ -38,12 +38,21 @@ class FirstBootAnalyzerTest(unittest.TestCase):
               usb_entries=4
               typec_entries=1
               pci_functions=3
+              net_interfaces=2
+              wlan_interfaces=1
+              bluetooth_entries=1
+              input_entries=4
+              sound_entries=3
               SMP=PASS
               ANS2/NVMe=DETECTED
               USB=ENUMERATED
               TYPEC=REGISTERED
               BCM4387-WIFI=DETECTED
               BCM4387-BT=DETECTED
+              WLAN-INTERFACE=PRESENT
+              BLUETOOTH-CLASS=PRESENT
+              INPUT=ENUMERATED
+              SOUND=ENUMERATED
               framebuffer/DRM=ENUMERATED
             ipad-linux: FIRST_BOOT_DIAGNOSTICS_COMPLETE
             """
@@ -59,6 +68,11 @@ class FirstBootAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["wifi4387"], "DETECTED")
         self.assertEqual(result["bt4387"], "DETECTED")
         self.assertEqual(result["pci_functions"], 3)
+        self.assertEqual(result["wlan_interface"], "PRESENT")
+        self.assertEqual(result["wlan_interfaces"], 1)
+        self.assertEqual(result["bluetooth_class"], "PRESENT")
+        self.assertEqual(result["input"], "ENUMERATED")
+        self.assertEqual(result["sound"], "ENUMERATED")
         self.assertEqual(result["graphics"], "ENUMERATED")
         self.assertFalse(result["linux_panic"])
 
@@ -77,6 +91,9 @@ class FirstBootAnalyzerTest(unittest.TestCase):
         self.assertEqual(result["usb"], "unknown")
         self.assertEqual(result["typec"], "unknown")
         self.assertEqual(result["wifi4387"], "unknown")
+        self.assertEqual(result["wlan_interface"], "unknown")
+        self.assertEqual(result["input"], "unknown")
+        self.assertEqual(result["sound"], "unknown")
 
     def test_stage2_exception(self):
         result = self.analyze(
