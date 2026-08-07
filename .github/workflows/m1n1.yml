@@ -1,0 +1,49 @@
+name: build-m1n1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/m1n1.yml'
+      - 'docs/m1n1-integration.md'
+      - 'src/boot/m1n1_handoff.*'
+      - 'src/boot/boot_info.h'
+
+jobs:
+  m1n1:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout upstream m1n1
+        uses: actions/checkout@v4
+        with:
+          repository: AsahiLinux/m1n1
+          submodules: recursive
+          path: m1n1
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            gcc-aarch64-linux-gnu \
+            libgnutls28-dev \
+            device-tree-compiler
+
+      - name: Install bare-metal Rust target
+        run: rustup target install aarch64-unknown-none-softfloat
+
+      - name: Build upstream m1n1
+        working-directory: m1n1
+        run: make -k -j2 ARCH=aarch64-linux-gnu- RELEASE=1
+
+      - name: Verify raw entry point exists
+        run: |
+          test -s m1n1/build/m1n1.bin
+          test $(stat -c%s m1n1/build/m1n1.bin) -gt 2048
+
+      - name: Upload m1n1 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: j407-next-stage-m1n1
+          path: m1n1/build/m1n1.bin
