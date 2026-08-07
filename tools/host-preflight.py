@@ -76,6 +76,7 @@ def verify_kit(path: pathlib.Path | None) -> dict[str, Any]:
 
 def build_result(args: argparse.Namespace) -> dict[str, Any]:
     system = platform.system()
+    python_supported = sys.version_info >= (3, 10)
     required_commands = {
         "python3": command("python3"),
         "git": command("git"),
@@ -95,8 +96,11 @@ def build_result(args: argparse.Namespace) -> dict[str, Any]:
             "system": system,
             "release": platform.release(),
             "machine": platform.machine(),
+            "python": platform.python_version(),
         },
         "host_supported": system in ("Darwin", "Linux"),
+        "python_supported": python_supported,
+        "python_requirement": ">=3.10",
         "required_commands": required_commands,
         "optional_commands": optional_commands,
         "m1n1_tree": check_m1n1_tree(args.m1n1),
@@ -113,8 +117,15 @@ def build_result(args: argparse.Namespace) -> dict[str, Any]:
 def print_text(result: dict[str, Any]) -> None:
     host = result["host"]
     print("J407 hardware-test host preflight")
-    print(f"host={host['system']} {host['release']} arch={host['machine']}")
+    print(
+        f"host={host['system']} {host['release']} arch={host['machine']} "
+        f"python={host['python']}"
+    )
     print(f"host_supported={result['host_supported']}")
+    print(
+        f"python_supported={result['python_supported']} "
+        f"requirement={result['python_requirement']}"
+    )
 
     for name, path in result["required_commands"].items():
         print(f"required:{name}={'OK ' + path if path else 'MISSING'}")
@@ -157,6 +168,8 @@ def main() -> int:
         print_text(result)
 
     if not result["host_supported"]:
+        return 2
+    if not result["python_supported"]:
         return 2
     if not all(result["required_commands"].values()):
         return 2
