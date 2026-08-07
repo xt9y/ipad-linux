@@ -12,6 +12,7 @@ on:
       - 'kernel/**'
       - 'initramfs/**'
       - 'scripts/build-initramfs.sh'
+      - 'scripts/check-j407-dtb.sh'
       - 'scripts/pack-m1n1-j407.py'
   pull_request:
     branches: [ ipad-air-5 ]
@@ -23,6 +24,7 @@ on:
       - 'kernel/**'
       - 'initramfs/**'
       - 'scripts/build-initramfs.sh'
+      - 'scripts/check-j407-dtb.sh'
       - 'scripts/pack-m1n1-j407.py'
 
 jobs:
@@ -113,11 +115,15 @@ jobs:
       - name: Validate compiled J407 DTB
         run: |
           mkdir -p ipad-linux/build/j407
+          sh ipad-linux/scripts/check-j407-dtb.sh \
+            linux/arch/arm64/boot/dts/apple/t8103-j407.dtb
           dtc -I dtb -O dts \
             linux/arch/arm64/boot/dts/apple/t8103-j407.dtb \
             -o ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'apple,j407' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'serial@235200000' ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'framebuffer@0' ipad-linux/build/j407/t8103-j407.compiled.dts
+          grep -q 'nvme@27bcc0000' ipad-linux/build/j407/t8103-j407.compiled.dts
           grep -q 'earlycon console=ttySAC0,115200 loglevel=8' \
             ipad-linux/build/j407/t8103-j407.compiled.dts
 
