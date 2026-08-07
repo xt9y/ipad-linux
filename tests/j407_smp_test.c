@@ -6,6 +6,11 @@
 #include "boot_info.h"
 #include "smp_contract.h"
 
+static const struct memory_range linux_ram = {
+    .base = 0x800000000ull,
+    .size = 0x40000000ull,
+};
+
 static void fill_valid(struct boot_info *boot)
 {
     static const uint64_t mpidrs[IPL_MAX_CPU_RELEASES] = {
@@ -29,34 +34,38 @@ int main(void)
     struct j407_smp_patch patch;
 
     fill_valid(&boot);
-    assert(j407_build_smp_patch(&boot, &patch));
+    assert(j407_build_smp_patch(&boot, linux_ram, &patch));
     assert(patch.count == IPL_MAX_CPU_RELEASES);
     assert(patch.entries[0].release_addr == 0x900000000ull);
     assert(patch.entries[4].release_addr == 0x900000100ull);
 
     fill_valid(&boot);
     boot.cpu_release_count = IPL_MAX_CPU_RELEASES - 1;
-    assert(!j407_build_smp_patch(&boot, &patch));
+    assert(!j407_build_smp_patch(&boot, linux_ram, &patch));
 
     fill_valid(&boot);
     boot.cpu_releases[7].mpidr = 0xdeadbeefull;
-    assert(!j407_build_smp_patch(&boot, &patch));
+    assert(!j407_build_smp_patch(&boot, linux_ram, &patch));
 
     fill_valid(&boot);
     boot.cpu_releases[7].mpidr = boot.cpu_releases[6].mpidr;
-    assert(!j407_build_smp_patch(&boot, &patch));
+    assert(!j407_build_smp_patch(&boot, linux_ram, &patch));
 
     fill_valid(&boot);
     boot.cpu_releases[7].release_addr = boot.cpu_releases[6].release_addr;
-    assert(!j407_build_smp_patch(&boot, &patch));
+    assert(!j407_build_smp_patch(&boot, linux_ram, &patch));
 
     fill_valid(&boot);
     boot.cpu_releases[7].release_addr |= 4ull;
-    assert(!j407_build_smp_patch(&boot, &patch));
+    assert(!j407_build_smp_patch(&boot, linux_ram, &patch));
+
+    fill_valid(&boot);
+    boot.cpu_releases[7].release_addr = linux_ram.base + 0x1000;
+    assert(!j407_build_smp_patch(&boot, linux_ram, &patch));
 
     fill_valid(&boot);
     boot.flags = 0;
-    assert(!j407_build_smp_patch(&boot, &patch));
+    assert(!j407_build_smp_patch(&boot, linux_ram, &patch));
 
     puts("J407 SMP contract tests passed");
     return 0;
