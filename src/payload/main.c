@@ -14,6 +14,8 @@
 #include "system.h"
 #include "uart.h"
 
+#define DAIF_ALL_MASKED 0x3c0ull
+
 static void loader_debug_write(const char *data, size_t size, void *ctx)
 {
     const struct boot_info *boot = (const struct boot_info *)ctx;
@@ -23,10 +25,39 @@ static void loader_debug_write(const char *data, size_t size, void *ctx)
         fn(data, (uint64_t)size, (void *)(uintptr_t)boot->debug_ctx);
 }
 
-static int execution_can_touch_physical_mmio(const struct boot_info *boot)
+static int runtime_cpu_contract_valid(const struct boot_info *boot)
 {
-    return boot->current_el >= 1 && boot->current_el <= 2 &&
-           !(boot->flags & BOOT_INFO_MMU_ENABLED);
+    uint64_t runtime_el = aarch64_current_el();
+    int runtime_mmu = aarch64_mmu_enabled();
+    int reported_mmu = (boot->flags & BOOT_INFO_MMU_ENABLED) != 0;
+
+    if (runtime_el != 1 && runtime_el != 2) {
+        debug_puts("ipad-linux: unsupported runtime exception level\n");
+        return 0;
+    }
+
+    if (runtime_el != boot->current_el) {
+        debug_puts("ipad-linux: loader/runtime EL mismatch\n");
+        return 0;
+    }
+
+    if (runtime_mmu != reported_mmu) {
+        debug_puts("ipad-linux: loader/runtime MMU mismatch\n");
+        return 0;
+    }
+
+    if (runtime_mmu) {
+        debug_puts("ipad-linux: Linux entry requires MMU off\n");
+        return 0;
+    }
+
+    return 1;
+}
+
+static int execution_can_touch_physical_mmio(void)
+{
+    uint64_t runtime_el = aarch64_current_el();
+    return (runtime_el == 1 || runtime_el == 2) && !aarch64_mmu_enabled();
 }
 
 static int try_linux_handoff(const struct boot_info *boot, struct memory_range ram)
@@ -38,7 +69,7 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
     if ((boot->flags & need) != need)
         return 0;
 
-    if (boot->flags & BOOT_INFO_MMU_ENABLED)
+    if (!runtime_cpu_contract_valid(boot))
         return 0;
 
     if (!memory_range_contains(ram, boot->linux_image_addr, 64) ||
@@ -61,8 +92,10 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
         .kernel_buffer_size = boot->linux_image_size,
         .dtb_addr = boot->dtb_addr,
         .dtb_size = dtb_total,
-        .current_el = boot->current_el,
-        .mmu_enabled = 0,
+        .initrd_addr = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_addr : 0,
+        .initrd_size = (boot->flags & BOOT_INFO_HAS_INITRD) ? boot->initrd_size : 0,
+        .current_el = aarch64_current_el(),
+        .mmu_enabled = aarch64_mmu_enabled(),
         .image = image,
     };
 
@@ -73,6 +106,11 @@ static int try_linux_handoff(const struct boot_info *boot, struct memory_range r
     debug_puts("ipad-linux: entering Linux\n");
 
     aarch64_mask_interrupts();
+    if ((aarch64_daif() & DAIF_ALL_MASKED) != DAIF_ALL_MASKED) {
+        debug_puts("ipad-linux: failed to mask DAIF\n");
+        return 0;
+    }
+
     linux_enter(boot->linux_image_addr, boot->dtb_addr);
 }
 
@@ -109,7 +147,7 @@ void kernel_main(const struct boot_info *boot)
             };
 
             if (adt_validate(adt)) {
-                int physical_mmio = execution_can_touch_physical_mmio(boot);
+                int physical_mmio = execution_can_touch_physical_mmio();
 
                 if (!loader_debug && physical_mmio)
                     debug_uart_from_adt(adt, 0);
