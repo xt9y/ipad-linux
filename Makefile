@@ -24,8 +24,10 @@ OBJS := \
 	build/platform.o \
 	build/memory.o \
 	build/adt.o \
+	build/adt_reg.o \
 	build/fdt.o \
-	build/debug.o
+	build/debug.o \
+	build/uart.o
 
 all: $(TARGET).elf verify-relocs $(TARGET).bin $(TARGET).dis
 
@@ -62,10 +64,16 @@ build/memory.o: src/memory/memory.c src/memory/memory.h | build
 build/adt.o: src/adt/adt.c src/adt/adt.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
+build/adt_reg.o: src/adt/adt_reg.c src/adt/adt.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
 build/fdt.o: src/fdt/fdt.c src/fdt/fdt.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/debug.o: src/debug/debug.c src/debug/debug.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/uart.o: src/debug/uart.c src/debug/uart.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(TARGET).elf: $(OBJS) src/payload/linker.ld
