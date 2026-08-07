@@ -9,6 +9,12 @@
 #define IPAD_CPID 0x8103u
 #define IPAD_BDID 0x10u
 
+/*
+ * T8103 DRAM starts at 0x8_00000000. The J407 Linux DTS deliberately
+ * provides this node with a zero-sized reg placeholder for runtime patching.
+ */
+#define IPAD_LINUX_MEMORY_PATH "/memory@800000000"
+
 struct platform_info {
     char product_type[16];
     char board_config[16];
