@@ -12,6 +12,7 @@ on:
       - 'tests/j407_firmware_test.py'
       - 'tests/z2fw_test.py'
       - 'tests/adt_function_test.c'
+      - 'tests/adt_clock_test.c'
       - 'src/adt/**'
   pull_request:
     branches: [ ipad-air-5 ]
@@ -24,6 +25,7 @@ on:
       - 'tests/j407_firmware_test.py'
       - 'tests/z2fw_test.py'
       - 'tests/adt_function_test.c'
+      - 'tests/adt_clock_test.c'
       - 'src/adt/**'
 
 jobs:
@@ -37,7 +39,8 @@ jobs:
           mkdir -p build
           clang -std=c17 -Wall -Wextra -Werror -Isrc/adt \
             tools/adt-inspect.c src/adt/adt.c src/adt/adt_reg.c \
-            src/adt/adt_function.c -o build/adt-inspect
+            src/adt/adt_function.c src/adt/adt_clock.c \
+            -o build/adt-inspect
           ./build/adt-inspect 2>&1 | grep -q 'usage:'
 
       - name: Test ADT function decoder
@@ -46,6 +49,13 @@ jobs:
             tests/adt_function_test.c src/adt/adt_function.c src/adt/adt.c \
             -o build/adt_function_test
           ./build/adt_function_test
+
+      - name: Test ADT boot clock resolver
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/adt \
+            tests/adt_clock_test.c src/adt/adt_clock.c src/adt/adt.c \
+            -o build/adt_clock_test
+          ./build/adt_clock_test
 
       - name: Test native m1n1 payload packer
         run: python3 -m unittest -v tests/pack_m1n1_test.py
