@@ -9,12 +9,26 @@ on:
       - 'docs/m1n1-integration.md'
       - 'src/boot/m1n1_handoff.*'
       - 'src/boot/boot_info.h'
+      - 'tests/m1n1_handoff_test.c'
+  pull_request:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/m1n1.yml'
+      - 'docs/m1n1-integration.md'
+      - 'src/boot/m1n1_handoff.*'
+      - 'src/boot/boot_info.h'
+      - 'tests/m1n1_handoff_test.c'
 
 jobs:
   m1n1:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout ipad-linux
+        uses: actions/checkout@v4
+        with:
+          path: ipad-linux
+
       - name: Checkout upstream m1n1
         uses: actions/checkout@v4
         with:
@@ -26,12 +40,29 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
+            clang \
             gcc-aarch64-linux-gnu \
             libgnutls28-dev \
             device-tree-compiler
 
       - name: Install bare-metal Rust target
         run: rustup target install aarch64-unknown-none-softfloat
+
+      - name: Verify upstream SMP API contract
+        run: |
+          grep -q 'void smp_start_secondaries(void)' m1n1/src/smp.h
+          grep -q 'uint64_t smp_get_mpidr(int cpu)' m1n1/src/smp.h
+          grep -q 'u64 smp_get_release_addr(int cpu)' m1n1/src/smp.h
+
+      - name: Test ipad-linux handoff builder
+        run: |
+          mkdir -p ipad-linux/build
+          clang -std=c17 -Wall -Wextra -Werror \
+            -Iipad-linux/src/boot \
+            ipad-linux/tests/m1n1_handoff_test.c \
+            ipad-linux/src/boot/m1n1_handoff.c \
+            -o ipad-linux/build/m1n1_handoff_test
+          ipad-linux/build/m1n1_handoff_test
 
       - name: Build upstream m1n1
         working-directory: m1n1
