@@ -43,6 +43,14 @@ struct j407_discovery {
     uint64_t dart_dcpext_size;
     uint64_t dart_dispext0_base;
     uint64_t dart_dispext0_size;
+
+    /* Read-only facts decoded from /arm-io/spi4/multi-touch function blobs. */
+    uint32_t touch_cs_gpio;
+    uint32_t touch_irq_gpio;
+    uint32_t touch_reset_gpio;
+    uint32_t touch_display_sync0_gpio;
+    uint32_t touch_display_sync1_gpio;
+    int touch_hbpp;
 };
 
 int j407_discover(struct adt_view adt, struct j407_discovery *out);
