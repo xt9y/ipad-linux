@@ -46,8 +46,7 @@ static size_t cstr_len(const char *s)
 static int reserve_struct(struct fdt_builder *b, size_t n, uint8_t **out)
 {
     size_t end = b->struct_off + b->struct_size + n;
-    size_t strings_begin = b->strings_off - b->strings_size;
-    if (!b->buffer || end > strings_begin || end > b->capacity)
+    if (!b->buffer || end > b->strings_off || end > b->capacity)
         return 0;
     *out = b->buffer + b->struct_off + b->struct_size;
     b->struct_size += n;
@@ -57,43 +56,39 @@ static int reserve_struct(struct fdt_builder *b, size_t n, uint8_t **out)
 static int push_u32(struct fdt_builder *b, uint32_t v)
 {
     uint8_t *p;
-    if (!reserve_struct(b, 4, &p)) return 0;
-    uint32_t x = be32(v);
-    p[0] = (uint8_t)(x >> 24);
-    p[1] = (uint8_t)(x >> 16);
-    p[2] = (uint8_t)(x >> 8);
-    p[3] = (uint8_t)x;
+    if (!reserve_struct(b, 4, &p))
+        return 0;
+    p[0] = (uint8_t)(v >> 24);
+    p[1] = (uint8_t)(v >> 16);
+    p[2] = (uint8_t)(v >> 8);
+    p[3] = (uint8_t)v;
     return 1;
 }
 
 static int string_offset(struct fdt_builder *b, const char *name, uint32_t *out)
 {
     size_t len = cstr_len(name) + 1;
-    if (!name || len > b->capacity || b->strings_size + len > b->strings_off)
+    if (!b || !name || !out || b->strings_off + b->strings_size + len > b->capacity)
         return 0;
 
-    size_t pos = b->strings_off - b->strings_size - len;
-    size_t strings_begin = b->strings_off - b->strings_size;
-    if (pos < b->struct_off + b->struct_size || pos > strings_begin)
-        return 0;
-
+    *out = (uint32_t)b->strings_size;
     for (size_t i = 0; i < len; ++i)
-        b->buffer[pos + i] = (uint8_t)name[i];
-
+        b->buffer[b->strings_off + b->strings_size + i] = (uint8_t)name[i];
     b->strings_size += len;
-    *out = (uint32_t)(b->strings_size - len);
     return 1;
 }
 
 int fdt_begin(struct fdt_builder *b, void *buffer, size_t capacity)
 {
-    if (!b || !buffer || capacity < 128)
+    if (!b || !buffer || capacity < 256)
         return 0;
 
     b->buffer = (uint8_t *)buffer;
     b->capacity = capacity;
-    b->struct_off = sizeof(struct fdt_header) + 16; /* empty reserve map */
-    b->strings_off = capacity;
+    b->struct_off = sizeof(struct fdt_header) + 16; /* terminating memreserve pair */
+    b->strings_off = capacity / 2;
+    if (b->strings_off <= b->struct_off)
+        return 0;
     b->struct_size = 0;
     b->strings_size = 0;
     b->depth = 0;
@@ -173,13 +168,13 @@ int fdt_finish(struct fdt_builder *b, size_t *out_size)
     if (!b || b->depth != 0 || !push_u32(b, FDT_END))
         return 0;
 
-    size_t strings_src = b->strings_off - b->strings_size;
     size_t strings_dst = align4(b->struct_off + b->struct_size);
-    if (strings_dst + b->strings_size > b->capacity)
+    if (strings_dst + b->strings_size > b->strings_off ||
+        strings_dst + b->strings_size > b->capacity)
         return 0;
 
     for (size_t i = 0; i < b->strings_size; ++i)
-        b->buffer[strings_dst + i] = b->buffer[strings_src + i];
+        b->buffer[strings_dst + i] = b->buffer[b->strings_off + i];
 
     struct fdt_header *h = (struct fdt_header *)b->buffer;
     size_t total = strings_dst + b->strings_size;
@@ -194,6 +189,7 @@ int fdt_finish(struct fdt_builder *b, size_t *out_size)
     h->size_dt_strings = be32((uint32_t)b->strings_size);
     h->size_dt_struct = be32((uint32_t)b->struct_size);
 
-    if (out_size) *out_size = total;
+    if (out_size)
+        *out_size = total;
     return 1;
 }
