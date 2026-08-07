@@ -50,3 +50,27 @@ int linux_fdt_patch_runtime(void *dtb, size_t available,
 
     return 1;
 }
+
+int linux_fdt_patch_cpu_releases(void *dtb, size_t available,
+                                 const struct linux_fdt_cpu_release *cpus,
+                                 size_t cpu_count)
+{
+    size_t total = 0;
+
+    if (!dtb || (!cpus && cpu_count) ||
+        !fdt_check_header(dtb, available, &total))
+        return 0;
+
+    for (size_t i = 0; i < cpu_count; ++i) {
+        if (!cpus[i].cpu_path || !cpus[i].release_addr)
+            return 0;
+
+        if (!fdt_setprop_u64_inplace(dtb, total,
+                                     cpus[i].cpu_path,
+                                     "cpu-release-addr",
+                                     cpus[i].release_addr))
+            return 0;
+    }
+
+    return 1;
+}
