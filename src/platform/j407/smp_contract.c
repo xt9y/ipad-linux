@@ -29,9 +29,11 @@ static const char *cpu_path_for_mpidr(uint64_t mpidr)
 }
 
 int j407_build_smp_patch(const struct boot_info *boot,
+                         struct memory_range linux_ram,
                          struct j407_smp_patch *out)
 {
-    if (!boot || !out || !(boot->flags & BOOT_INFO_HAS_CPU_RELEASES))
+    if (!boot || !out || !memory_range_valid(linux_ram) ||
+        !(boot->flags & BOOT_INFO_HAS_CPU_RELEASES))
         return 0;
 
     /* J407/T8103 has four Icestorm + four Firestorm CPUs. */
@@ -45,6 +47,10 @@ int j407_build_smp_patch(const struct boot_info *boot,
         const char *path = cpu_path_for_mpidr(source->mpidr);
 
         if (!path || !source->release_addr || (source->release_addr & 7ull))
+            return 0;
+
+        /* Holding-pen targets must survive Linux allocator startup. */
+        if (memory_range_contains(linux_ram, source->release_addr, sizeof(uint64_t)))
             return 0;
 
         for (uint32_t j = 0; j < i; ++j) {
