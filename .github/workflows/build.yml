@@ -33,6 +33,11 @@ jobs:
           clang -std=c17 -Wall -Wextra -Werror -Isrc/adt tests/adt_test.c src/adt/adt.c -o build/adt_test
           ./build/adt_test
 
+      - name: Run boot ABI tests
+        run: |
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/boot tests/boot_info_test.c -o build/boot_info_test
+          ./build/boot_info_test
+
       - name: Show image information
         run: |
           llvm-size build/payload.elf
