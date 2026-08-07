@@ -22,6 +22,7 @@ OBJS := \
 	build/boot_plan.o \
 	build/main.o \
 	build/platform.o \
+	build/discovery.o \
 	build/memory.o \
 	build/adt.o \
 	build/adt_reg.o \
@@ -56,6 +57,9 @@ build/main.o: src/payload/main.c | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/platform.o: $(PLATFORM_DIR)/platform.c $(PLATFORM_DIR)/platform.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/discovery.o: $(PLATFORM_DIR)/discovery.c $(PLATFORM_DIR)/discovery.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/memory.o: src/memory/memory.c src/memory/memory.h | build
