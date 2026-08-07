@@ -9,6 +9,7 @@ on:
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
       - 'tests/analyze_first_boot_test.py'
+      - 'tests/build_hardware_report_test.py'
       - 'tests/j407_firmware_test.py'
       - 'tests/z2fw_test.py'
       - 'tests/adt_function_test.c'
@@ -22,6 +23,7 @@ on:
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
       - 'tests/analyze_first_boot_test.py'
+      - 'tests/build_hardware_report_test.py'
       - 'tests/j407_firmware_test.py'
       - 'tests/z2fw_test.py'
       - 'tests/adt_function_test.c'
@@ -62,6 +64,9 @@ jobs:
 
       - name: Test first-boot serial analyzer
         run: python3 -m unittest -v tests/analyze_first_boot_test.py
+
+      - name: Test physical hardware report builder
+        run: python3 -m unittest -v tests/build_hardware_report_test.py
 
       - name: Test J407 firmware tree checker
         run: python3 -m unittest -v tests/j407_firmware_test.py
