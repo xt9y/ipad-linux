@@ -12,7 +12,7 @@ static uint32_t read_be32(const uint8_t *p)
            (uint32_t)p[3];
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     uint8_t blob[2048];
     struct fdt_builder b;
@@ -35,6 +35,17 @@ int main(void)
     assert(size > 64);
     assert(read_be32(blob) == FDT_MAGIC);
     assert(read_be32(blob + 4) == size);
+
+    size_t checked_size = 0;
+    assert(fdt_check_header(blob, size, &checked_size));
+    assert(checked_size == size);
+
+    if (argc > 1) {
+        FILE *f = fopen(argv[1], "wb");
+        assert(f);
+        assert(fwrite(blob, 1, size, f) == size);
+        assert(fclose(f) == 0);
+    }
 
     puts("FDT tests passed");
     return 0;
