@@ -1,0 +1,68 @@
+name: kernel-patches
+
+on:
+  push:
+    branches: [ ipad-air-5, 'integration/**' ]
+    paths:
+      - '.github/workflows/kernel-patches.yml'
+      - 'kernel/patches/**'
+  pull_request:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/kernel-patches.yml'
+      - 'kernel/patches/**'
+
+jobs:
+  mainline-patches:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ipad-linux
+        uses: actions/checkout@v4
+        with:
+          path: ipad-linux
+
+      - name: Checkout current mainline Linux
+        uses: actions/checkout@v4
+        with:
+          repository: torvalds/linux
+          path: linux
+          fetch-depth: 1
+
+      - name: Install ARM64 kernel build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            gcc-aarch64-linux-gnu bc bison flex libssl-dev libelf-dev
+
+      - name: Apply J407 patch series
+        working-directory: linux
+        run: |
+          for patch in ../ipad-linux/kernel/patches/*.patch; do
+            echo "checking $patch"
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+
+      - name: Configure Apple ARM64 kernel
+        working-directory: linux
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+          scripts/config --enable ARCH_APPLE --enable PINCTRL_APPLE_GPIO
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+          grep -q '^CONFIG_PINCTRL_APPLE_GPIO=y' .config
+
+      - name: Compile patched Apple GPIO driver
+        working-directory: linux
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j2 \
+            drivers/pinctrl/pinctrl-apple-gpio.o
+
+      - name: Verify binding property landed
+        working-directory: linux
+        run: |
+          grep -q 'apple,irq-groups:' \
+            Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml
+          grep -q 'of_property_read_u32_index' \
+            drivers/pinctrl/pinctrl-apple-gpio.c
