@@ -104,11 +104,10 @@ jobs:
               }
           done
 
-      - name: Build mainline Linux Image and J407 DTB
+      - name: Build mainline Linux Image and arm64 DTBs
         working-directory: linux
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j2 \
-            Image arch/arm64/boot/dts/apple/t8103-j407.dtb
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j2 Image dtbs
           test -s arch/arm64/boot/Image
           test -s arch/arm64/boot/dts/apple/t8103-j407.dtb
 
