@@ -7,4 +7,6 @@ uint64_t aarch64_daif(void);
 uint64_t aarch64_sctlr_el1(void);
 int aarch64_el1_mmu_enabled(void);
 int aarch64_mmu_enabled(void);
+void aarch64_clean_dcache_range(uint64_t addr, uint64_t size);
+void aarch64_invalidate_icache_range(uint64_t addr, uint64_t size);
 void aarch64_mask_interrupts(void);
