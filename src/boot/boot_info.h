@@ -13,6 +13,8 @@ enum boot_info_flags {
     BOOT_INFO_HAS_DTB = 1u << 4,
     BOOT_INFO_HAS_INITRD = 1u << 5,
     BOOT_INFO_PLATFORM_QUIESCED = 1u << 6,
+    /* DTB is writable and contains the fixed-size runtime placeholders. */
+    BOOT_INFO_DTB_MUTABLE = 1u << 7,
 };
 
 /* Optional loader-provided debug callback ABI. */
