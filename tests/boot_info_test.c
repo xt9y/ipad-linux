@@ -31,6 +31,10 @@ int main(void)
     assert(offsetof(struct boot_info, current_el) == 72);
     assert(offsetof(struct boot_info, debug_write_addr) == 80);
     assert(offsetof(struct boot_info, debug_ctx) == 88);
+    assert(offsetof(struct boot_info, linux_image_addr) == 96);
+    assert(offsetof(struct boot_info, dtb_addr) == 112);
+    assert(offsetof(struct boot_info, initrd_addr) == 128);
+    assert(sizeof(struct boot_info) == 176);
 
     puts("boot_info tests passed");
     return 0;
