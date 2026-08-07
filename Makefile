@@ -8,7 +8,7 @@ READELF := llvm-readelf
 PLATFORM := j407
 PLATFORM_DIR := src/platform/$(PLATFORM)
 
-INCLUDES := -Isrc/boot -Isrc/adt -Isrc/memory -Isrc/debug -Isrc/arch/aarch64 -I$(PLATFORM_DIR)
+INCLUDES := -Isrc/boot -Isrc/adt -Isrc/fdt -Isrc/memory -Isrc/debug -Isrc/arch/aarch64 -I$(PLATFORM_DIR)
 CFLAGS := --target=aarch64-none-elf -ffreestanding -fpie -fno-plt -fno-stack-protector -fno-builtin -nostdlib -Wall -Wextra -O2 $(INCLUDES)
 ASFLAGS := --target=aarch64-none-elf -ffreestanding -nostdlib
 LDFLAGS := -T src/payload/linker.ld -nostdlib
@@ -18,10 +18,13 @@ OBJS := \
 	build/exceptions.o \
 	build/system.o \
 	build/linux_handoff.o \
+	build/linux_image.o \
+	build/boot_plan.o \
 	build/main.o \
 	build/platform.o \
 	build/memory.o \
 	build/adt.o \
+	build/fdt.o \
 	build/debug.o
 
 all: $(TARGET).elf verify-relocs $(TARGET).bin $(TARGET).dis
@@ -41,6 +44,12 @@ build/system.o: src/arch/aarch64/system.S | build
 build/linux_handoff.o: src/boot/linux_handoff.S | build
 	$(CC) $(ASFLAGS) -c $< -o $@
 
+build/linux_image.o: src/boot/linux_image.c src/boot/linux_image.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/boot_plan.o: src/boot/boot_plan.c src/boot/boot_plan.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
 build/main.o: src/payload/main.c | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -51,6 +60,9 @@ build/memory.o: src/memory/memory.c src/memory/memory.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/adt.o: src/adt/adt.c src/adt/adt.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/fdt.o: src/fdt/fdt.c src/fdt/fdt.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/debug.o: src/debug/debug.c src/debug/debug.h | build
