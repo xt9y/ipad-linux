@@ -25,6 +25,7 @@ OBJS := \
 	build/platform.o \
 	build/discovery.o \
 	build/quiesce.o \
+	build/smp_contract.o \
 	build/memory.o \
 	build/adt.o \
 	build/adt_reg.o \
@@ -68,6 +69,9 @@ build/discovery.o: $(PLATFORM_DIR)/discovery.c $(PLATFORM_DIR)/discovery.h | bui
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/quiesce.o: $(PLATFORM_DIR)/quiesce.c $(PLATFORM_DIR)/quiesce.h | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/smp_contract.o: $(PLATFORM_DIR)/smp_contract.c $(PLATFORM_DIR)/smp_contract.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/memory.o: src/memory/memory.c src/memory/memory.h | build
