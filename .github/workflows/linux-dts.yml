@@ -1,4 +1,4 @@
-name: linux-dts
+name: linux-bundle
 
 on:
   workflow_dispatch:
@@ -7,14 +7,20 @@ on:
     paths:
       - '.github/workflows/linux-dts.yml'
       - 'dts/**'
+      - 'kernel/**'
+      - 'initramfs/**'
+      - 'scripts/build-initramfs.sh'
   pull_request:
     branches: [ ipad-air-5 ]
     paths:
       - '.github/workflows/linux-dts.yml'
       - 'dts/**'
+      - 'kernel/**'
+      - 'initramfs/**'
+      - 'scripts/build-initramfs.sh'
 
 jobs:
-  mainline-dtb:
+  mainline-bundle:
     runs-on: ubuntu-latest
 
     steps:
@@ -30,43 +36,72 @@ jobs:
           path: linux
           fetch-depth: 1
 
-      - name: Install kernel build dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             gcc-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
             bc bison flex libssl-dev libelf-dev \
-            device-tree-compiler
+            device-tree-compiler cpio file
+
+      - name: Build ARM64 bring-up initramfs
+        working-directory: ipad-linux
+        run: |
+          CROSS_COMPILE=aarch64-linux-gnu- \
+            sh scripts/build-initramfs.sh build/initramfs
+          file build/initramfs/root/init
+          test -s build/initramfs/initramfs.cpio.gz
 
       - name: Overlay J407 board DTS
         run: |
           cp ipad-linux/dts/t8103-j407.dts linux/arch/arm64/boot/dts/apple/t8103-j407.dts
           printf '%s\n' 'dtb-$(CONFIG_ARCH_APPLE) += t8103-j407.dtb' >> linux/arch/arm64/boot/dts/apple/Makefile
 
-      - name: Configure arm64
+      - name: Configure J407 kernel
         working-directory: linux
-        run: make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+          ./scripts/kconfig/merge_config.sh -m .config ../ipad-linux/kernel/j407-bringup.config
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+          grep -q '^CONFIG_ARCH_APPLE=y' .config
+          grep -q '^CONFIG_SERIAL_SAMSUNG=y' .config
+          grep -q '^CONFIG_SERIAL_SAMSUNG_CONSOLE=y' .config
+          grep -q '^CONFIG_APPLE_DART=y' .config
+          grep -q '^CONFIG_NVME_APPLE=y' .config
 
-      - name: Build arm64 device trees
+      - name: Build mainline Image and arm64 device trees
         working-directory: linux
-        run: make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j2 dtbs
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j2 Image dtbs
 
       - name: Inspect J407 DTB
         run: |
           test -s linux/arch/arm64/boot/dts/apple/t8103-j407.dtb
           dtc -I dtb -O dts \
             linux/arch/arm64/boot/dts/apple/t8103-j407.dtb \
-            -o ipad-linux/build-j407.dts
-          grep -q 'Apple iPad Air (5th generation, Wi-Fi)' ipad-linux/build-j407.dts
-          grep -q 'apple,j407' ipad-linux/build-j407.dts
-          grep -q 'serial@235200000' ipad-linux/build-j407.dts
-          grep -q 'status = "okay"' ipad-linux/build-j407.dts
-          grep -q 'memory@800000000' ipad-linux/build-j407.dts
+            -o ipad-linux/build/j407-mainline.dts
+          grep -q 'Apple iPad Air (5th generation, Wi-Fi)' ipad-linux/build/j407-mainline.dts
+          grep -q 'apple,j407' ipad-linux/build/j407-mainline.dts
+          grep -q 'serial@235200000' ipad-linux/build/j407-mainline.dts
+          grep -q 'ttySAC0' ipad-linux/build/j407-mainline.dts
+          grep -q 'memory@800000000' ipad-linux/build/j407-mainline.dts
 
-      - name: Upload J407 DTB
+      - name: Assemble boot bundle
+        run: |
+          mkdir -p ipad-linux/build/j407-bundle
+          cp linux/arch/arm64/boot/Image ipad-linux/build/j407-bundle/Image
+          cp linux/arch/arm64/boot/dts/apple/t8103-j407.dtb \
+            ipad-linux/build/j407-bundle/t8103-j407.dtb
+          cp ipad-linux/build/initramfs/initramfs.cpio.gz \
+            ipad-linux/build/j407-bundle/initramfs.cpio.gz
+          cp linux/.config ipad-linux/build/j407-bundle/linux.config
+          sha256sum ipad-linux/build/j407-bundle/* \
+            > ipad-linux/build/j407-bundle/SHA256SUMS
+          ls -lh ipad-linux/build/j407-bundle
+
+      - name: Upload J407 boot bundle
         uses: actions/upload-artifact@v4
         with:
-          name: t8103-j407-mainline-dtb
-          path: |
-            linux/arch/arm64/boot/dts/apple/t8103-j407.dtb
-            ipad-linux/build-j407.dts
+          name: j407-mainline-boot-bundle
+          path: ipad-linux/build/j407-bundle/
