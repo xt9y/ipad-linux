@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/m1n1.yml'
       - 'docs/m1n1-integration.md'
+      - 'integration/m1n1/**'
       - 'src/boot/m1n1_handoff.*'
       - 'src/boot/boot_info.h'
       - 'tests/m1n1_handoff_test.c'
@@ -15,6 +16,7 @@ on:
     paths:
       - '.github/workflows/m1n1.yml'
       - 'docs/m1n1-integration.md'
+      - 'integration/m1n1/**'
       - 'src/boot/m1n1_handoff.*'
       - 'src/boot/boot_info.h'
       - 'tests/m1n1_handoff_test.c'
@@ -53,6 +55,7 @@ jobs:
           grep -q 'void smp_start_secondaries(void)' m1n1/src/smp.h
           grep -q 'uint64_t smp_get_mpidr(int cpu)' m1n1/src/smp.h
           grep -q 'u64 smp_get_release_addr(int cpu)' m1n1/src/smp.h
+          grep -q 'void smp_set_wfe_mode(bool new_mode)' m1n1/src/smp.h
 
       - name: Test ipad-linux handoff builder
         run: |
@@ -63,6 +66,14 @@ jobs:
             ipad-linux/src/boot/m1n1_handoff.c \
             -o ipad-linux/build/m1n1_handoff_test
           ipad-linux/build/m1n1_handoff_test
+
+      - name: Compile J407 adapter with m1n1 flags
+        run: |
+          mkdir -p ipad-linux/build
+          make -C m1n1 invoke_cc ARCH=aarch64-linux-gnu- \
+            CFILE="$GITHUB_WORKSPACE/ipad-linux/integration/m1n1/ipad_linux_adapter.c" \
+            OBJFILE="$GITHUB_WORKSPACE/ipad-linux/build/ipad_linux_adapter.o"
+          test -s ipad-linux/build/ipad_linux_adapter.o
 
       - name: Build upstream m1n1
         working-directory: m1n1
