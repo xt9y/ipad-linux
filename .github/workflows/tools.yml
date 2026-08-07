@@ -11,6 +11,7 @@ on:
       - 'tests/analyze_first_boot_test.py'
       - 'tests/build_hardware_report_test.py'
       - 'tests/verify_first_boot_kit_test.py'
+      - 'tests/host_preflight_test.py'
       - 'tests/j407_firmware_test.py'
       - 'tests/z2fw_test.py'
       - 'tests/adt_function_test.c'
@@ -26,6 +27,7 @@ on:
       - 'tests/analyze_first_boot_test.py'
       - 'tests/build_hardware_report_test.py'
       - 'tests/verify_first_boot_kit_test.py'
+      - 'tests/host_preflight_test.py'
       - 'tests/j407_firmware_test.py'
       - 'tests/z2fw_test.py'
       - 'tests/adt_function_test.c'
@@ -72,6 +74,9 @@ jobs:
 
       - name: Test first-boot artifact verifier
         run: python3 -m unittest -v tests/verify_first_boot_kit_test.py
+
+      - name: Test Mac/Linux host preflight
+        run: python3 -m unittest -v tests/host_preflight_test.py
 
       - name: Test J407 firmware tree checker
         run: python3 -m unittest -v tests/j407_firmware_test.py
