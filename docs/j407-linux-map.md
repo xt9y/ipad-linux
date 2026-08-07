@@ -12,21 +12,42 @@ Use upstream `t8103.dtsi` for SoC topology. Do **not** include `t8103-jxxx.dtsi`
 
 | Block | J407 public ADT evidence | Linux T8103 node/support | Confidence | Action |
 |---|---|---|---|---|
-| CPUs | 8 main CPUs; J407 `/cpus` data follows T8103 CPU topology | `t8103.dtsi` has 4 Icestorm + 4 Firestorm CPUs | verified | Reuse topology; loader must patch spin-table release addresses |
+| CPUs | 8 main CPUs; J407 `/cpus` data follows T8103 CPU topology | `t8103.dtsi` has 4 Icestorm + 4 Firestorm CPUs | verified | Reuse topology; m1n1 patches spin-table release addresses |
 | Architected timer | J407 exposes AIC timebase/timer data | root `arm,armv8-timer` node | verified SoC | Ensure CNTFRQ/CNTVOFF contract before kernel entry |
 | AIC2 | `/arm-io` child compatible `aic,1`, `aic-version = 2`, `#main-cpus = 8`; first child reg starts at `0x3b100000` | `aic@23b100000`, compatible `apple,t8103-aic`, IRQ controller | verified | Reuse Linux AIC node; do not invent IRQs outside DT/ADT |
-| UART0 | `/arm-io/uart0`, Samsung-style UART, child reg `0x35200000`, IRQ 605 | `serial@235200000`, compatible `apple,s5l-uart`, IRQ 605 | verified | Good early console candidate; current loader already discovers it through ADT ranges |
+| UART0 | `/arm-io/uart0`, Samsung-style UART, child reg `0x35200000`, IRQ 605 | `serial@235200000`, compatible `apple,s5l-uart`, IRQ 605 | verified | Enabled in J407 DTS as early console |
 | PMGR | `/arm-io/pmgr`; T8103 public map puts it at physical `0x23b700000` | `power-management@23b700000`, compatible `apple,t8103-pmgr` | verified SoC | Reuse Linux PMGR/power-domain description; board runtime state still matters |
-| DART / SIO | J407 contains `dart-sio` and SIO/NVMe-related properties | `sio_dart: iommu@235004000`, `apple,t8103-dart` | likely/strong | Compare stream IDs and SIO wiring before enabling storage |
-| NVMe / ANS2 | J407 public ADT contains `nvme-linear-sq`, `nvme-interrupt-idx` and adjacent SIO/DART data | `nvme@27bcc0000`, compatible `apple,t8103-nvme-ans2`, plus SART/mailbox | likely/strong | Storage is a high-value next mapping target; verify J407 mailbox/SART/power domains |
-| USB controller 0 | J407 contains `dart-usb0`; T8103 USB/ATC blocks are present in ADT | `dwc3_0: usb@382280000` plus two DARTs and `atcphy0` | likely | J407 has one external USB-C port; determine which T8103 controller/PHY path is physically routed |
-| USB controller 1 | T8103 provides a second DWC3/ATC path used on some Macs | `dwc3_1` + `atcphy1` | unknown for J407 | Keep disabled until J407 ADT proves the path is used |
+| DART / SIO | J407 contains `dart-sio` and SIO/NVMe-related properties | `sio_dart: iommu@235004000`, `apple,t8103-dart` | likely/strong | Compare stream IDs and SIO wiring before relying on SIO peripherals |
+| ANS mailbox | J407 ANS register tuple 0 begins at child `0x77400000`; its interrupt list includes 583/584/585/586 | `ans_mbox: mbox@277408000` is inside the same translated ANS window and uses IRQs 583-586 | verified | Reuse T8103 mailbox/RTKit description |
+| NVMe / ANS2 | J407 ANS tuple 3 is child `0x7bcc0000`, size `0x60000`; `nvme-interrupt-idx = 4` selects IRQ 590 | `nvme@27bcc0000`, size `0x40000`, IRQ 590, compatible `apple,t8103-nvme-ans2`; ANS reg `0x277400000` | verified addresses/IRQ | Reuse T8103 ANS2 node; mainline uses conservative subranges of Apple ADT windows |
+| SART-ANS | J407 `sart-ans` is child `0x7bc50000`, size `0x10000`, `sart-version = 2` | `sart@27bc50000`, size `0x10000`, compatible `apple,t8103-sart` | verified | Reuse T8103 SART node |
+| USB controller 0 | J407 contains `usb-drd0` and `dart-usb0`; T8103 USB/ATC blocks are present in ADT | `dwc3_0: usb@382280000` plus DARTs and `atcphy0` | likely | J407 has one external USB-C port; verify the exact controller/PHY and DART mapping before enabling board routing |
+| USB controller 1 | T8103 provides a second DWC3/ATC path used on some Macs | `dwc3_1` + `atcphy1` | unknown for J407 | Keep board routing absent until J407 ADT proves the path is used |
 | PCIe Wi-Fi/BT | iPad has Wi-Fi/BT, but Mac `t8103-jxxx.dtsi` hardcodes PCIe devices/board types for Macs | T8103 PCIe controller/DART support exists | unknown board wiring | Do not copy Mac Wi-Fi/BT nodes. Derive J407 transport/chip/firmware data independently |
-| Display / DCP | J407 ADT contains `dcp0-expert`, DCP ASC data, display DART/scaler and `dispext0,t8103` data | no directly reusable J407 board description in current mainline T8103 DTS | unknown / major port | Keep framebuffer/simplefb as first display target; native DCP later |
+| Display / DCP | J407 ADT contains `dcp0-expert`, DCP ASC data, display DART/scaler and `dispext0,t8103` data | no directly reusable J407 board description in current mainline T8103 DTS | unknown / major port | Keep firmware/simple framebuffer as first display target; native DCP later |
 | GPU | M1/T8103 GPU is supported by the Asahi stack at SoC level | Linux/Asahi AGX support exists for T8103 | SoC reusable, board integration unknown | Defer until memory/IOMMU/firmware handoff is stable |
-| Watchdog | J407 ADT exposes watchdog state; T8103 map has WDT at `0x23d2b0000` | Linux Apple watchdog support can be evaluated | likely | Current payload only disables discovered watchdogs in a constrained MMU-off context |
+| Watchdog | J407 ADT exposes watchdog state; T8103 map has WDT at `0x23d2b0000` | Linux Apple watchdog support can be evaluated | likely | Diagnostic Stage 2 only disables discovered watchdogs in a constrained MMU-off context |
 
-## SMP is now a concrete loader requirement
+## First-boot path
+
+The preferred first-boot path now uses upstream m1n1's native payload scanner/kboot implementation rather than forcing the diagnostic Stage 2 into the critical path.
+
+The packed image order is:
+
+```text
+m1n1.bin
+  + t8103-j407.dtb
+  + "m1n1_initramfs" + u32_le(size) + initramfs.cpio.gz
+  + Linux Image
+```
+
+m1n1 recognizes the J407 DTB by `compatible = "apple,j407"`, registers the initramfs, recognizes the final ARM64 Image, starts secondary CPUs, patches the Linux FDT and schedules the kernel as its normal `next_stage`. The kernel is deliberately last because m1n1 cannot infer where a size-less uncompressed inline Linux Image ends.
+
+`scripts/pack-m1n1-j407.py` validates and creates this chain. `.github/workflows/j407-image.yml` builds the complete first-boot artifact.
+
+The custom `ipad-linux-stage2.bin` remains useful for controlled diagnostics and for future entry mechanisms that want a versioned `boot_info` ABI rather than invoking m1n1 kboot directly.
+
+## SMP
 
 Current upstream `t8103.dtsi` uses:
 
@@ -37,18 +58,11 @@ cpu-release-addr = <0 0>   # loader fills this
 
 for all eight CPUs.
 
-m1n1 does not obtain those release addresses from a static board file. It starts secondary CPUs into its own holding loop, maintains a per-CPU spin table, and patches each Linux CPU node's `cpu-release-addr` with the address of that CPU's spin-table target slot.
+m1n1 starts secondary CPUs into its own holding loop, maintains a per-CPU spin table, and patches each Linux CPU node's `cpu-release-addr` with the address of that CPU's spin-table target slot. The repository also has a compile-checked m1n1 adapter implementing the equivalent `boot_info v4` contract for the diagnostic Stage 2 path.
 
-Therefore our choices are:
+## Runtime DT properties in the diagnostic Stage 2 path
 
-1. reuse/adapt m1n1's T8103 SMP implementation, or
-2. implement equivalent J407 secondary-CPU bring-up and holding pens ourselves.
-
-Option 1 is preferred unless J407 boot state makes it impossible.
-
-## Runtime DT properties we already know must be patched
-
-The J407 DTB template now intentionally contains fixed-size placeholders for:
+The J407 DTB template contains fixed-size placeholders for:
 
 ```text
 /memory@800000000/reg
@@ -56,31 +70,20 @@ The J407 DTB template now intentionally contains fixed-size placeholders for:
 /chosen/linux,initrd-end
 ```
 
-The payload only patches them when the entry loader sets `BOOT_INFO_DTB_MUTABLE`.
+and mainline `t8103.dtsi` contains the eight `cpu-release-addr` placeholders. The Stage 2 payload patches these only when the entry loader explicitly marks the DTB mutable and provides validated runtime data.
 
-Next runtime properties to support once SMP is implemented:
-
-```text
-/cpus/cpu@0/cpu-release-addr
-/cpus/cpu@1/cpu-release-addr
-/cpus/cpu@2/cpu-release-addr
-/cpus/cpu@3/cpu-release-addr
-/cpus/cpu@10100/cpu-release-addr
-/cpus/cpu@10101/cpu-release-addr
-/cpus/cpu@10102/cpu-release-addr
-/cpus/cpu@10103/cpu-release-addr
-```
+For the native m1n1 first-boot path, upstream `kboot_prepare_dt()` performs the corresponding Linux FDT runtime preparation.
 
 ## Immediate bring-up order
 
-1. Boot CPU entry contract: EL/MMU/DAIF/timer/cache state.
-2. Writable Linux DTB with RAM/initrd runtime patches.
-3. Secondary CPU holding pens + `cpu-release-addr` patching.
-4. AIC and PMGR state required for Linux/SMP.
-5. ANS2/NVMe + SIO DART.
-6. One verified J407 USB-C controller/PHY path.
-7. Simple framebuffer if firmware leaves a usable framebuffer.
-8. Native DCP/display, GPU, Wi-Fi/BT, audio and remaining peripherals.
+1. Produce a reproducible `j407-m1n1-linux.bin` from current upstream m1n1 + mainline Linux.
+2. UART0 earlycon and PID1 initramfs output.
+3. SMP/AIC/timer stability through m1n1 kboot.
+4. ANS2/NVMe using the now-verified T8103 addresses/IRQ/SART path.
+5. Verify the single J407 USB-C controller/PHY/DART route.
+6. Firmware/simple framebuffer if the boot environment leaves one usable.
+7. Native DCP/display, then GPU.
+8. J407-specific Wi-Fi/BT, touch, audio and remaining peripherals.
 
 ## Sources
 
@@ -92,6 +95,7 @@ Next runtime properties to support once SMP is implemented:
   - https://github.com/torvalds/linux/blob/master/arch/arm64/boot/dts/apple/t8103-jxxx.dtsi
 - Asahi T8103 memory map:
   - https://asahilinux.org/docs/hw/soc/memmap/
-- m1n1 Linux DT patch/SMP implementation:
+- m1n1 payload/kboot/SMP implementation:
+  - https://github.com/AsahiLinux/m1n1/blob/main/src/payload.c
   - https://github.com/AsahiLinux/m1n1/blob/main/src/kboot.c
   - https://github.com/AsahiLinux/m1n1/blob/main/src/smp.c
