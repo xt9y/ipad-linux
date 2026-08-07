@@ -5,6 +5,7 @@
 #include "boot_plan.h"
 #include "debug.h"
 #include "discovery.h"
+#include "exceptions.h"
 #include "fdt.h"
 #include "linux_fdt.h"
 #include "linux_handoff.h"
@@ -217,6 +218,12 @@ void kernel_main(const struct boot_info *boot)
             };
             debug_set_sink(sink);
         }
+
+        /*
+         * From this point onward, fatal EL1/EL2 exceptions are captured with
+         * ESR/ELR/FAR/SPSR instead of disappearing into an anonymous WFE loop.
+         */
+        exception_vectors_install_current();
 
         struct memory_range ram = {
             .base = boot->memory_base,
