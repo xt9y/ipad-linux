@@ -1,0 +1,28 @@
+name: tools
+
+on:
+  push:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/tools.yml'
+      - 'tools/**'
+      - 'src/adt/**'
+  pull_request:
+    branches: [ ipad-air-5 ]
+    paths:
+      - '.github/workflows/tools.yml'
+      - 'tools/**'
+      - 'src/adt/**'
+
+jobs:
+  host-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ADT inspector
+        run: |
+          mkdir -p build
+          clang -std=c17 -Wall -Wextra -Werror -Isrc/adt \
+            tools/adt-inspect.c src/adt/adt.c src/adt/adt_reg.c \
+            -o build/adt-inspect
+          ./build/adt-inspect 2>&1 | grep -q 'usage:'
