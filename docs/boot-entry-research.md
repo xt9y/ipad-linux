@@ -21,117 +21,154 @@ A normal application sandbox escape is not sufficient. A conventional jailbreak 
 
 ## Evidence collected
 
-### Target identity
+### Target identity — now verified on physical hardware
 
-Multiple public firmware/device databases agree on the target identity:
+The target identity was first established from public firmware/device data and was then confirmed on the physical iPad on 2026-08-13:
 
 ```text
-ProductType  iPad13,16
-Model        A2588
-BoardConfig  J407AP
-SoC          Apple M1 / T8103
-CPID         0x8103
-BDID         0x10
+ProductType      iPad13,16
+HardwareModel    J407AP
+Model            A2588
+SoC              Apple M1 / T8103
+CPID             0x8103
+BDID             0x10
+CPUArchitecture  arm64e
+iPadOS           26.5
+Build            23F77
 ```
 
 This is important: the iPad Air 5 is **M1**, not M2. T8103 is also used by first-generation M1 Macs, which gives us substantial reusable SoC support.
 
+### Physical USB and Recovery validation
+
+The real device was connected to an AArch64 Fedora Asahi Linux host with a normal USB-C data cable.
+
+Normal iPadOS enumerated as:
+
+```text
+05ac:12ab Apple, Inc. iPad
+```
+
+Apple Recovery enumerated as:
+
+```text
+05ac:1281 Apple Mobile Device [Recovery Mode]
+```
+
+`irecovery` independently confirmed J407/CPID/BDID and reached the real Recovery command prompt. The observed Recovery firmware identified itself as:
+
+```text
+Microkernel iBoot for j407
+Board 0x10 (j407ap) / Rev 0x5
+BUILD_TAG:   mBoot-18000.120.36
+BUILD_STYLE: RELEASE
+```
+
+Legacy `getenv` requests tested through libirecovery returned no values on this mBoot release. No write/upload/boot request was required for this validation.
+
+The complete sanitized validation record is in `docs/physical-validation-2026-08-13.md`.
+
+### Matching 26.5 J407 restore chain
+
+The matching public `23F77` restore IPSW was inspected offline. Its BuildManifest contains J407 identities for erase, update and Recovery Customer Install flows.
+
+The J407 boot/restore set includes:
+
+```text
+Firmware/dfu/iBSS.j407.RELEASE.im4p
+Firmware/dfu/iBEC.j407.RELEASE.im4p
+Firmware/all_flash/LLB.j407.RELEASE.im4p
+Firmware/all_flash/iBoot.j407.RELEASE.im4p
+Firmware/all_flash/DeviceTree.j407ap.im4p
+kernelcache.release.ipad13b
+```
+
+The iBSS, iBEC, LLB and iBoot IM4P containers identify the same `mBoot-18000.120.36` build family observed on the physical device.
+
+The BuildManifest marks the relevant boot/restore objects trusted. The Recovery Customer Install identity marks both `iBSS` and `iBEC` with `Personalize = True`, and their restore rules depend on Image4/security/production state.
+
+### NeRD / RecoveryOTA evidence
+
+The J407 Recovery Customer Install identity contains:
+
+```text
+AllowNeRDBoot = True
+NeRDEpoch = 0
+RestoreAttestationMode = 6
+```
+
+Many of its variant contents are labelled `RecoveryOTAProduction`.
+
+No `PermitNeRDPivot` value was present in the J407 identity. This pass also found no Mac-style `LocalPolicy`, `CustomOS`, `coih`, `lpnh`, `smb0`, `smb1`, `smb2` or `nsih` fields.
+
+Public TSS implementations model `NeRDEpoch` and optional `PermitNeRDPivot` as Apple TSS request fields together with an Image4 ticket request. Therefore `AllowNeRDBoot` is treated here as evidence of an Apple-authorized recovery/restore path, **not** as evidence that the device accepts arbitrary unsigned m1n1/Linux payloads.
+
 ### Linux support exists for the SoC, not this board
 
-Current mainline Linux contains `arch/arm64/boot/dts/apple/t8103.dtsi` and board files for M1 Macs such as J274, J293, J313, J456 and J457. The common `t8103-jxxx.dtsi` sets up Mac-specific pieces such as two USB-C paths, PCIe Wi-Fi/Bluetooth and loader-filled memory/framebuffer data.
+Current mainline Linux contains `arch/arm64/boot/dts/apple/t8103.dtsi` and board files for M1 Macs such as J274, J293, J313, J456 and J457. The common Mac board data cannot be blindly reused as J407 board data.
 
-No `J407` board file was found in the current mainline Linux or m1n1 trees during this research pass. We should therefore reuse `t8103.dtsi` but must **not** blindly include the Mac-only `t8103-jxxx.dtsi` on the iPad.
+The project therefore reuses the T8103 SoC support and carries independently verified J407 board data in its own DTS/platform code.
 
 ### Mac-style CustomOS boot depends on LocalPolicy
 
-Apple documents an owner-controlled LocalPolicy system specifically for **Mac with Apple silicon**. In permissive security, LocalPolicy fields such as `smb1` allow a custom kernel collection to be signed by the Secure Enclave owner key; the `coih` field records the CustomOS Image4 manifest hash. These settings are changed from paired One True Recovery (1TR).
+Apple documents an owner-controlled LocalPolicy system specifically for **Mac with Apple silicon**. In permissive security, LocalPolicy fields allow a custom kernel collection to be authorized by the Secure Enclave owner key. Asahi uses that Mac-specific mechanism to place m1n1 in the boot chain.
 
-Asahi relies on that mechanism: iBoot2 loads m1n1 as the configured custom kernel, then m1n1 converts the Apple/XNU-style boot environment into an ARM64 Linux/FDT environment.
+No documented equivalent owner-configurable CustomOS/LocalPolicy workflow for iPad was found, and the physical J407/26.5 BuildManifest pass did not expose the corresponding LocalPolicy/CustomOS fields.
 
-There is no documented equivalent owner-configurable CustomOS/LocalPolicy workflow for iPad. That is the core architectural difference between the easy-to-install Asahi path on Macs and this project.
+That remains the core architectural difference between the installable Asahi path on Macs and this project.
 
 ### Boot ROM status
 
-The public Apple-device research databases checked for T8103 currently list no known Boot ROM vulnerability for M1/T8103. This is not proof that none exists; it means this project has no verified public immutable early-boot primitive to build on.
+No verified public M1/T8103 J407 BootROM entry primitive is assumed by this repository. Absence of a public method is not proof that no vulnerability can exist; it means the project currently has no reproducible immutable early-boot primitive to build on.
 
 ### Jailbreak status is a different capability class
 
-Public compatibility databases list jailbreaks for `iPad13,16` on older iPadOS 15.x/16.x releases. Those techniques execute within or against the running iPadOS software stack. They do not by themselves establish the EL1/EL2, MMU-off, DMA-quiesced pre-Linux environment required by this loader.
+Code execution inside a running iPadOS stack is not automatically equivalent to the pre-Linux EL1/EL2, MMU, cache, interrupt and DMA control required by this loader.
 
-A jailbreak can still be useful for collecting runtime information, studying the live ADT or testing hardware assumptions, but the native boot-entry problem must be treated separately.
+A jailbreak could still be useful for runtime observation, but the native boot-entry problem must be treated separately.
 
-## What we can build before entry is solved
+## What is already ready once entry is solved
 
-The loader should continue to become a clean target for any future authorized/research entry mechanism. The entry adapter only needs to populate the stable `boot_info` ABI and transfer control.
+The repository now has a clean target for any future legitimate entry mechanism:
 
-Current loader-side work can proceed independently:
+1. Versioned `boot_info v4` handoff ABI.
+2. Runtime EL/MMU validation instead of trusting loader metadata.
+3. ARM64 `Image`, DTB and initrd placement validation.
+4. Cache-maintenance and Linux handoff code.
+5. Bounded live Apple Device Tree parsing and `ranges` translation.
+6. J407-specific platform discovery isolated under `src/platform/j407/`.
+7. J407 Linux FDT built from upstream T8103 support plus independently verified board data.
+8. Eight-core SMP contract.
+9. Mainline Linux + J407 DTB + static diagnostic initramfs cloud build.
+10. m1n1 payload packer, live-ADT dumper, host preflight, first-boot analyzer and hardware-report builder.
 
-1. Validate the real runtime exception level and MMU state rather than trusting loader metadata.
-2. Validate ARM64 `Image` placement, DTB alignment/size and initrd placement.
-3. Perform required cache maintenance before Linux entry.
-4. Parse the live Apple Device Tree and derive physical addresses through `ranges` rather than hardcoding Mac addresses.
-5. Keep J407-specific hardware initialization isolated under `src/platform/j407/`.
-6. Build a J407 Linux FDT from upstream `t8103.dtsi` plus verified board data and runtime patches.
-7. Define explicit CPU/timer/coherency requirements for the handoff contract.
-
-## Next research targets
-
-### 1. Pin the physical device's installed build
-
-Record only the non-secret fields needed for research:
+## Current physical status
 
 ```text
-iPadOS version
-build number
-ProductType
+J407 identity                       VERIFIED ON DEVICE
+normal USB-C data link              VERIFIED ON DEVICE
+Apple Recovery USB                  VERIFIED ON DEVICE
+mBoot recovery prompt               VERIFIED ON DEVICE
+mBoot build                         VERIFIED ON DEVICE
+matching 26.5 IPSW/BuildManifest    VERIFIED OFFLINE
+J407 iBSS/iBEC/iBoot identities     VERIFIED OFFLINE
+Image4 trust/personalization        VERIFIED OFFLINE
+m1n1 execution on J407              NOT ACHIEVED
+Linux execution on J407             NOT ACHIEVED
 ```
-
-Do not record serial number, ECID or other device-unique identifiers in this public repository.
-
-### 2. Map the matching public firmware
-
-For the installed build, record from public IPSW metadata:
-
-- restore IPSW filename/build;
-- iBoot/iBEC version where publicly exposed;
-- DeviceTree image name for J407;
-- kernelcache naming;
-- BuildManifest identity for `iPad13,16`.
-
-This gives us reproducible firmware-version context without modifying the device.
-
-### 3. Compare J407 ADT topology with T8103 Linux nodes
-
-Build a table mapping live/public ADT paths to Linux DT nodes for at least:
-
-```text
-AIC
-PMGR
-UART
-DART/IOMMU
-NVMe
-USB/DWC3
-ATC/USB-C PHY
-GPIO
-watchdog
-DCP/display
-Wi-Fi/Bluetooth
-```
-
-### 4. Keep the entry mechanism replaceable
-
-Do not couple generic Linux bring-up code to a specific jailbreak, exploit, restore tool or firmware vulnerability. Any future entry path should terminate at the same `boot_info` boundary.
 
 ## Current conclusion
 
-The project has two separate engineering problems:
+The project still has two separate engineering problems:
 
 ```text
-A. Obtain a legitimate/research execution path before XNU owns the machine.
+A. Obtain a legitimate/authorized execution path before XNU owns the machine.
 B. Turn that execution environment into a correct T8103/J407 Linux boot environment.
 ```
 
-Problem B can make substantial progress today. Problem A remains unresolved: no public M1/T8103 Boot ROM path or owner-authorized iPad CustomOS mechanism was verified in this research pass.
+Problem B is substantially prepared. Problem A remains the hard gate.
+
+Nothing found in the physical validation invalidates the Linux design. Native Linux remains technically plausible because T8103 is already a Linux-capable SoC and the physical device exactly matches the J407 assumptions used by the software. But until m1n1 (or an equivalent loader) can actually be executed on J407, a physical Linux boot remains unproven.
 
 ## Public references
 
