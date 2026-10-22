@@ -1,0 +1,9 @@
+# Payload build artifacts
+build/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# macOS noise
+.DS_Store
