@@ -2,7 +2,7 @@ name: layout
 
 on:
   push:
-    branches: [ ipad-air-5 ]
+    branches: [ main, ipad-air-5 ]
     paths:
       - '.github/workflows/layout.yml'
       - 'src/boot/linux_layout.*'
@@ -10,7 +10,7 @@ on:
       - 'src/memory/**'
       - 'tests/linux_layout_test.c'
   pull_request:
-    branches: [ ipad-air-5 ]
+    branches: [ main, ipad-air-5 ]
     paths:
       - '.github/workflows/layout.yml'
       - 'src/boot/linux_layout.*'
