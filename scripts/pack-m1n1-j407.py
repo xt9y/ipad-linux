@@ -24,8 +24,18 @@ import struct
 import sys
 
 FDT_MAGIC = b"\xd0\x0d\xfe\xed"
+FDT_BEGIN_NODE = b"\x00\x00\x00\x01"
+FDT_END_NODE = b"\x00\x00\x00\x02"
+FDT_END = b"\x00\x00\x00\x09"
 ARM64_IMAGE_MAGIC = b"ARM\x64"
 GZIP_MAGIC = b"\x1f\x8b"
+
+# m1n1's inline payload scanner accepts a DTB only when its root "compatible"
+# property contains "apple," + lowercased live-ADT "target-type" (see
+# AsahiLinux/m1n1 src/payload.c payload_run()). For iPad13,16/J407 the live
+# target-type is J407, so a first-boot DTB must advertise "apple,j407" or
+# m1n1 aborts after loading the kernel ("Kernel found but no devicetree").
+J407_EXPECTED_COMPATIBLE = b"apple,j407\x00"
 
 
 def read(path: pathlib.Path) -> bytes:
@@ -44,6 +54,77 @@ def validate_dtb(data: bytes, path: pathlib.Path) -> None:
             f"{path}: FDT totalsize is {total}, file contains {len(data)} bytes; "
             "payload chaining requires an exact DTB"
         )
+    if not root_compatible_contains(data, J407_EXPECTED_COMPATIBLE):
+        raise ValueError(
+            f"{path}: root compatible does not advertise 'apple,j407'; "
+            "m1n1 only accepts a payload DTB matching the live Apple Device "
+            "Tree target-type ('apple,' + lowercased target-type)"
+        )
+
+
+def root_compatible_contains(data: bytes, wanted: bytes) -> bool:
+    """Return True when the FDT root node's compatible list contains `wanted`.
+
+    This mirrors the minimal flattened-device-tree walk m1n1 relies upon for
+    its payload scan (big-endian tokens in the header-referenced structure
+    block). Only the root node's properties are inspected and the walk is
+    fail-closed: any structural surprise means "does not contain".
+    """
+    if len(data) < 40 or data[:4] != FDT_MAGIC:
+        return False
+    off_struct = struct.unpack_from(">I", data, 8)[0]
+    off_strings = struct.unpack_from(">I", data, 12)[0]
+    size_struct = struct.unpack_from(">I", data, 36)[0]
+    if not off_struct or off_struct >= len(data) or not size_struct:
+        return False
+    if not off_strings or off_strings >= len(data):
+        return False
+
+    end = min(off_struct + size_struct, len(data))
+    if struct.unpack_from(">I", data, off_struct)[0] != 0x1:  # FDT_BEGIN_NODE
+        return False
+    pos = off_struct + 4
+    nul = data.find(b"\x00", pos, end)
+    if nul < 0:  # root node name ("" here) not terminated
+        return False
+    pos = nul + 1
+    pos += (-pos % 4)
+
+    strings = data[off_strings:]
+    wanted_entry = wanted.rstrip(b"\x00")
+    while pos + 4 <= end:
+        token = struct.unpack_from(">I", data, pos)[0]
+        if token in (0x2, 0x9):  # FDT_END_NODE / FDT_END
+            break
+        if token != 0x3:  # FDT_PROP
+            return False
+        if pos + 12 > end:
+            return False
+        prop_len = struct.unpack_from(">I", data, pos + 4)[0]
+        nameoff = struct.unpack_from(">I", data, pos + 8)[0]
+        if pos + 12 + prop_len > end:
+            return False
+        if nameoff >= len(strings):
+            return False
+        name_end = strings.find(b"\x00", nameoff)
+        if name_end < 0:
+            return False
+        name = strings[nameoff:name_end]
+        value = data[pos + 12:pos + 12 + prop_len]
+        if name == b"compatible":
+            entries = [
+                entry
+                for entry in value.rstrip(b"\x00").split(b"\x00")
+                if entry
+            ]
+            for entry in entries:
+                if entry == wanted_entry:
+                    return True
+            return False
+        pos += 12 + prop_len
+        pos += (-pos % 4)
+
+    return False
 
 
 def validate_initramfs(data: bytes, path: pathlib.Path) -> None:
