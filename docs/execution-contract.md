@@ -14,7 +14,7 @@ x0 = pointer to struct boot_info, or 0 when no contract is available
 
 The payload preserves `x0`, establishes its temporary internal stack, and passes the pointer to `kernel_main()`.
 
-`struct boot_info` is versioned and begins with a fixed magic value. Current version: `3`.
+`struct boot_info` is versioned and begins with a fixed magic value. Current version: `4` (see `src/boot/boot_info.h`, `IPL_BOOT_INFO_VERSION`).
 
 Current fields cover:
 
@@ -25,7 +25,9 @@ Current fields cover:
 - optional loader debug callback;
 - optional preloaded Linux `Image`;
 - optional preloaded Linux DTB;
-- optional initrd.
+- optional initrd;
+- up to eight `{mpidr, release_addr}` spin-table entries
+  (`BOOT_INFO_HAS_CPU_RELEASES`).
 
 Unknown fields and reserved fields must be zeroed.
 
@@ -40,6 +42,7 @@ BOOT_INFO_HAS_DTB
 BOOT_INFO_HAS_INITRD
 BOOT_INFO_PLATFORM_QUIESCED
 BOOT_INFO_DTB_MUTABLE
+BOOT_INFO_HAS_CPU_RELEASES
 ```
 
 `BOOT_INFO_MMU_ENABLED` is not trusted blindly. The payload reads the active `SCTLR_EL1` or `SCTLR_EL2` and refuses Linux entry when the runtime state disagrees with the loader metadata.
@@ -47,6 +50,11 @@ BOOT_INFO_DTB_MUTABLE
 `BOOT_INFO_PLATFORM_QUIESCED` is an explicit promise by the preceding stage that DMA-capable devices have been stopped or otherwise made safe for Linux handoff. The current J407 helper only handles a small subset of watchdog/device state and is not sufficient to assert this flag on its own.
 
 `BOOT_INFO_DTB_MUTABLE` means the DTB resides in writable RAM and is the J407-style template with fixed-size runtime placeholders. Only then may the payload change it in place.
+
+`BOOT_INFO_HAS_CPU_RELEASES` means `cpu_releases[]` carries one
+`{mpidr, release_addr}` entry per J407 CPU. The release slots are the
+loader's own spin-table words and the Linux-usable RAM range must protect
+them (see the SMP section below).
 
 ## RAM semantics
 
@@ -70,7 +78,11 @@ The precompiled J407 Linux DTB contains fixed-size placeholders:
 
 The FDT patcher is fail-closed but not transactional: if a later property is missing, an earlier property may already have changed. Any patch failure therefore invalidates the DTB for that boot attempt.
 
-Future SMP support will similarly patch existing 64-bit `cpu-release-addr` properties. The generic API for that already exists; the actual per-CPU holding-pen addresses do not yet.
+Because the FDT is fixed-size, the payload cannot add new structure (for example a `/reserved-memory` node or extra memreserve entries). Anything the kernel must not allocate over has to be excluded from the advertised RAM range by the entry loader, or handled inside a DTB that was built for it.
+
+`linux_fdt_patch_cpu_releases()` patches the existing 64-bit
+`cpu-release-addr` properties of the eight J407 CPU nodes in place, using
+the `boot_info` release table.
 
 ## Linux Image placement
 
@@ -103,13 +115,27 @@ When entering Linux at EL1, the payload can verify `CNTFRQ`, but it cannot repai
 
 EL2 remains the preferred future entry level.
 
-## SMP limitation
+## SMP contract
 
 Upstream `t8103.dtsi` declares all eight M1 CPUs with `enable-method = "spin-table"` and zero-valued `cpu-release-addr` placeholders.
 
-m1n1 starts secondary CPUs into its own per-CPU holding loops and patches the FDT with the address of each spin-table target slot. Our payload can already patch these properties but does **not** yet start the J407 secondary CPUs.
+The m1n1 adapter (`integration/m1n1/ipad_linux_adapter.c`) reuses m1n1's
+`smp_start_secondaries()` and collects the live `{mpidr, release_addr}`
+table into `boot_info`. The Stage-2 payload patches all eight
+`cpu-release-addr` properties from that table before entering Linux.
 
-Until this is implemented or reused from m1n1, the project does not satisfy the full Linux SMP entry contract.
+Mainline Linux does not reserve the `cpu-release-addr` words itself
+(verified against `arch/arm64/kernel/smp_spin_table.c` on current
+mainline): protecting them is the loader's job. Upstream m1n1 protects its
+spin-table words with `fdt_add_mem_rsv()` covering the whole m1n1 image,
+which also covers the `.data.smp_shared` spin table. Because this payload's
+DTB is fixed-size, it cannot add memreserve entries; instead the Stage-2
+contract (`j407_build_smp_patch()`) refuses any release slot inside the
+advertised Linux-usable RAM, and the adapter path excludes the m1n1 image
+region (holding pens plus spin table) from the memory range handed to the
+payload. If that exclusion would split the usable range into two disjoint
+regions, the handoff fails closed: the current single-range `boot_info`
+ABI cannot express that case (see "RAM semantics").
 
 ## Apple Device Tree
 
