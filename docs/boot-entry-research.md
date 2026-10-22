@@ -41,7 +41,22 @@ Build            23F77
 
 This is important: the iPad Air 5 is **M1**, not M2. T8103 is also used by first-generation M1 Macs, which gives us substantial reusable SoC support.
 
-Version drift note: the identity above was recorded on 2026-08-13. iPadOS 27.0.1 (`24A446`) has been signed since 2026-09-28, so the device may have auto-updated since the last physical contact — re-read `ProductVersion`/`BuildVersion` via `ideviceinfo` on the next connection before drawing build-specific conclusions.
+Re-verified on device on 2026-10-22 (simple usbmuxd pairing, strictly read-only, no changes made to the device): the board identity is unchanged and the firmware has moved on. The device now runs:
+
+```text
+ProductType      iPad13,16          (unchanged)
+HardwareModel    J407AP             (unchanged)
+ChipID           0x8103 / BoardID 0x10
+ActivationState  Activated
+iPadOS           27.0 beta 7
+Build            24A5424a           (seeded 2026-08-24)
+Boot chain       mBoot-20457.2.37
+```
+
+That is neither the GA 27.0 (`24A437`) nor the currently signed 27.0.1 (`24A446`) — between the 2026-08-13 validation and this check the device enrolled in the 27.0 developer beta, and `iPadOS 27.0 beta 7 / 24A5424a` is the boot image that has been actually observed on it. The 26.5 record above stays as the earlier hardware observation. Practical consequences:
+
+- the previously observed `mBoot-18000.120.36` recovery/boot chain is now outdated for this specific device; any further offline boot-chain inspection needs a J407 identity from a `24A5424a` manifest (the `23F77` section below remains valid purely as the historical record it was);
+- the easily-recognized research constraint stands: being on a beta seed narrows future restores relative to the public signed build `27.0.1 (24A446)`, but nothing about this adds a boot-entry primitive.
 
 ### Physical USB and Recovery validation
 
@@ -191,15 +206,15 @@ The repository now has a clean target for any future legitimate entry mechanism:
 ## Current physical status
 
 ```text
-J407 identity                       VERIFIED ON DEVICE
+J407 identity                       VERIFIED ON DEVICE (2026-08-13, re-checked 2026-10-22)
 normal USB-C data link              VERIFIED ON DEVICE
 Apple Recovery USB                  VERIFIED ON DEVICE
-mBoot recovery prompt               VERIFIED ON DEVICE
-mBoot build                         VERIFIED ON DEVICE
+mBoot recovery prompt               VERIFIED ON DEVICE (26.5 era)
+firmware on device (2026-10-22)     VERIFIED ON DEVICE: iPadOS 27.0 beta 7 / 24A5424a
+boot chain on device (2026-10-22)   VERIFIED ON DEVICE: mBoot-20457.2.37
 matching 26.5 IPSW/BuildManifest    VERIFIED OFFLINE
-J407 iBSS/iBEC/iBoot identities     VERIFIED OFFLINE
+J407 iBSS/iBEC/iBoot identities     VERIFIED OFFLINE (23F77 era)
 Image4 trust/personalization        VERIFIED OFFLINE
-firmware version on device as of today    UNKNOWN (device disconnected since 2026-08-13)
 m1n1 execution on J407              NOT ACHIEVED
 Linux execution on J407             NOT ACHIEVED
 ```
