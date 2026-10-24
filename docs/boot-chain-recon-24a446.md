@@ -157,3 +157,13 @@ USB serial-string values; never copy them into the repo or any report.
 - [x] Load-base-independent code-to-data xref (`tools/boot-image-xref.py`): 9220 ADRP(+ADD) refs → 688 data pages, top pages identified as SysConfig3/DER parsing machinery
 - [ ] Deep analysis: load-base resolution + literal-pointer resolution (18459 pool LDRs pending) → full handler-cluster enumeration
 - [ ] Extended DFU fuzz campaign with per-session device approval
+
+## DFU session 2 (2026-10-24 afternoon, fresh DFU entries)
+
+Repeatable causality established on fresh DFU entries (device re-entered by user after the first flip):
+
+- **IN-class requests are all nondisruptive on a fresh device**: GETSTATUS/GETSTATE reproduce session-1 bytes byte-for-byte (`00 32 00 00 02 00` / `02`, stable digests) and remain clean after the whole read battery. UPLOAD is a genuine 2 s timeout with no error latch (steady state — earlier mid-flip errors were not upload semantics). Wrong-interface targeting (wIndex=1) returns an immediate `[Errno 2] Entity not found` — a distinct, instant rejection, not a timeout.
+- **Both OUT-class requests are state-changing**: ABORT (`0x21/0x06`) and CLRSTATUS (`0x21/0x04`), n=2 each-pass, on separately entered DFU states: the request itself returns `[Errno 5] Input/Output Error`, the device leaves the USB bus within 250 ms, and ~16–34 s later **re-enumerates as `05ac:12ab`** — deviceClass 0x00 with 5 configurations exposing PTP imaging (3 endpoints), audio class, HID, CDC-NCM and vendor interfaces — the normal iPadOS boot USB personality, not a DFU variant. The `12ab` window then leaves the bus again after tens of seconds.
+- **Interpretation (bounded)**: on this BootROM DFU build, host-to-device class requests trigger a ROM USB-stack teardown from which the device boots onward into the normal OS. Whether that is a deliberate reset handler or a crash path is indistinguishable from the host side; both are consistent with the data. DFU idle is therefore only stable under IN-only traffic.
+- Good practice recorded for future sessions: run all IN-side probes first; treat ABORT/CLRSTATUS as the terminal step of any session; after an OUT request, do not reuse the old handle (the device re-appears under a different PID and needs re-entry via the physical buttons).
+- Session logs archived locally (`dfu-fuzz-run.log`, `phaseA-reads.log`, `phaseB-clrstatus.log`).

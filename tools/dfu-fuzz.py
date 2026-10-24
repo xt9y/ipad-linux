@@ -40,14 +40,20 @@ CLASS_REQUEST_NAMES = {
     0x06: "ABORT",
 }
 
-# Mirror of the read-side behavior recorded on the physical J407 in
+# Mirror of class-request behavior recorded on the physical J407 in
 # hardware DFU on 2026-10-24 (see docs/boot-chain-recon-24a446.md).
-# Vectors absent from this mirror are UNKNOWN; the offline run reports
-# them as UNRECORDED instead of inventing behavior.
+# Keys: vector name first (for targeted variants), then the base class
+# request name. Vectors absent from this mirror are reported as
+# UNRECORDED instead of inventing behavior.
 MIRROR = {
-    "GETSTATUS": {"bytes": [0x00, 0x32, 0x00, 0x00, 0x02, 0x00]},
-    "GETSTATE": {"bytes": [0x02]},
-    "UPLOAD": {"outcome": "TIMEOUT"},
+    "GETSTATUS": {"outcome": "OK", "bytes": [0x00, 0x32, 0x00, 0x00, 0x02, 0x00]},
+    "GETSTATE": {"outcome": "OK", "bytes": [0x02]},
+    "UPLOAD": {"outcome": "TIMEOUT", "note": "2 s timeout; no DFU error latch (steady state)"},
+    "GETSTATUS(wrong-interface)": {"outcome": "ENOENT", "note": "immediate Errno 2; not a timeout"},
+    "GETSTATE(wrong-interface)": {"outcome": "ENOENT", "note": "immediate Errno 2; not a timeout"},
+    "ABORT": {"outcome": "I/O-ERROR", "note": "detaches within 250 ms; re-enumerates as 05ac:12ab composite personality"},
+    "CLRSTATUS": {"outcome": "I/O-ERROR", "note": "same detach/flip behavior as ABORT"},
+    "ABORT(again)": {"outcome": "NO-LIVE-RECORD", "note": "post-flip stale handle; only meaningful on a fresh DFU link"},
 }
 
 
@@ -86,19 +92,22 @@ def build_vectors() -> list[Vector]:
 
 
 def mirror_lookup(vector: Vector):
+    """Preference order: exact vector-name key (covers targeted variants
+    like wrong-interface / ABORT(again)), then base class-request name,
+    else UNRECORDED."""
+    name_key = vector.name
     base = CLASS_REQUEST_NAMES[vector.b_request]
-    entry = MIRROR.get(base)
+    entry = None
+    if name_key in MIRROR:
+        entry = MIRROR[name_key]
+    elif base in MIRROR:
+        entry = MIRROR[base]
     if entry is None:
-        return "UNRECORDED", None
-    if base == "GETSTATUS":
-        if vector.w_index != 0:
-            return "UNRECORDED", None
-        return "OK", entry["bytes"]
-    if base == "GETSTATE":
-        return "OK", entry["bytes"]
-    if base == "UPLOAD":
-        return entry["outcome"], None
-    return "UNRECORDED", None
+        return "UNRECORDED", "-"
+    detail = entry.get("bytes")
+    if detail is None:
+        detail = entry.get("note", "-")
+    return entry["outcome"], detail
 
 
 def run_offline() -> int:
