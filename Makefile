@@ -144,7 +144,8 @@ PYTHON_TESTS := \
 	tests/z2fw_test.py \
 	tests/dfu_fuzz_test.py \
 	tests/boot_image_recon_test.py \
-	tests/boot_image_disasm_test.py
+	tests/boot_image_disasm_test.py \
+	tests/boot_image_xref_test.py
 
 test: host-tests $(PYTHON_TESTS)
 

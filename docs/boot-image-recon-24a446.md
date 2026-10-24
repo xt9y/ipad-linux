@@ -275,3 +275,35 @@ decode coverage: 84.2% (rest = literal pools/bounds data)
     0x00000002000005a0 @ +0x190888  peripherals/MMIO (base 0x200000000)
     0x0000000200000648 @ +0x1908c8  peripherals/MMIO (base 0x200000000)
     ... (truncated at 32 unique values)```
+
+## pc-relative data xref (load-base independent)
+
+First code-to-data cross-reference pass (`tools/boot-image-xref.py`): ADRP(+immediate ADD) address formation is fully PC-relative, so target pages resolve in image coordinates without knowing the load base. Literal-pool LDRs (pointer traffic needing the base) are counted but not resolved.
+
+```text
+## pc-relative data-reference map
+instructions decoded: 474556
+adrp(+add) data references resolved: 9220 to 688 distinct target pages
+literal-pool LDR instructions: 18459 (pointer traffic without resolved values — pool constants need the load base)
+
+top referenced pages with resident strings (candidates for string/config tables and handler data):
+  page+0x19c:   74 refs  "asc_data_isolation_handoff_telemetry_restricted"; "arm-io/smc/iop-smc-nub/smc-socd"; "s/usr/standalone/firmware/FUD/"
+  page+0x1db:   70 refs  (no strings)
+  page+0x1da:   62 refs  (no strings)
+  page+0x1bd:   59 refs  "RDkA/1"
+  page+0xd2:   59 refs  (no strings)
+  page+0x2dc:   57 refs  (no strings)
+  page+0x1be:   56 refs  (no strings)
+  page+0x19b:   54 refs  "cacal_find_right_failing_point"; "cacal_find_right_passing_point"; "arm-io/aop/iop-aop-nub/compass"
+  page+0x19d:   52 refs  "DERDecodeSysConfig3ParseAndPopulateMetadataSequence"; "single_allocSysConfig3PayloadEntryInternal"; "singlesysConfig3GetPayloadEntryForKey"
+  page+0xd8:   52 refs  (no strings)
+  page+0xdc:   51 refs  (no strings)
+  page+0x24b:   50 refs  (no strings)
+  page+0x1ad:   49 refs  (no strings)
+  page+0x1d3:   47 refs  (no strings)
+  page+0x245:   46 refs  (no strings)
+  page+0x1dd:   43 refs  (no strings)
+  page+0x277:   43 refs  (no strings)
+  page+0x28a:   43 refs  (no strings)
+  page+0x1a7:   42 refs  "cwFS6z"
+  page+0x1de:   42 refs  (no strings)```
