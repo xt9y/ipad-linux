@@ -160,6 +160,7 @@ USB serial-string values; never copy them into the repo or any report.
 - [x] Load-base-independent code-to-data xref (`tools/boot-image-xref.py`): 9220 ADRP(+ADD) refs → 688 data pages, top pages identified as SysConfig3/DER parsing machinery
 - [x] String-anchored reverse mapping: `getenv`/`setenv`/`setenvnp` handler cluster (page 0x211), `boot-command`/`boot-args` boot-flow cluster (page 0x210), `com.apple.System.boot-nonce` registry plumbing (page 0x223), early-entry boot-property references
 - [x] Dispatch-table semantics (structural): accessor sites → exact entries → kernel low32 verified end-to-end; parallel twin partitions (identical 11-class byte-index maps; Latin-zone class boundaries); UTF-8-decoder-family hypothesis explicitly open
+- [x] FourCC tag scan: 414 distinct register-built word tags / 771 sites; IMG4 vocabulary cluster at 0x22508..0x22654 (IM4M/ECID/CHIP/BORD/DGST/SDOM/CSEC); bvxN/avxN codec-tag family co-located with the twin dispatch kernels (proximity, not linkage)
 - [ ] Deep analysis: cookie meaning, consumer loop identity, load-base resolution (18459 pool LDRs pending)
 - [ ] Extended DFU fuzz campaign with per-session device approval
 

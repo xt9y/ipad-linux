@@ -59,6 +59,21 @@ class BootImageDisasmTest(unittest.TestCase):
         self.assertIn("0x0000000800000000", report)
         self.assertIn("udf-run spans", report)
 
+    def test_fourcc_tag_scan(self):
+        # movz w0, #0x6f73  = 0x52800000 | (0x6f73 << 5) | 0 = 0x528DEE60
+        # movk w0, #0x4431, lsl #16 = 0x72A00000 | (0x4431 << 5) = 0x72A88620
+        # register word 0x44316f73 -> LE bytes 73 6f 31 44 -> "so1D"
+        data = bytes.fromhex("60ee8d52")
+        data += bytes.fromhex("2086a872")
+        # non-printable pair: movz w0, #0xbad0 = 0x52975A00; the pair value
+        # 0x4431BAD0 contains 0xd0/0xba and must be excluded
+        data += bytes.fromhex("005a9752")
+        data += bytes.fromhex("2086a872")
+        report = boot_image_disasm.analyze(data)
+        self.assertIn("## fourcc-style word tags", report)
+        self.assertIn('"so1D"', report)
+        self.assertIn("distinct tags: 1", report)
+
     def test_cli_writes_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "image.bin"

@@ -105,6 +105,34 @@ def pool_constants(data: bytes, spans) -> list[tuple[int, int, str]]:
     return out
 
 
+def fourcc_tags(data: bytes):
+    """Scan aligned words for `movz w?, #imm16` + `movk w?, #imm16,
+    lsl #16` pairs building a printable 4-byte word (register-built
+    word identifiers). Encoding-based (capstone 5 renames `movz` to
+    `mov`), so this is matched on the raw instruction words:
+      movz w?, hw=0  -> word & 0xFFE00000 == 0x52800000
+      movk w?, hw=1  -> word & 0xFFE00000 == 0x72A00000
+    Returns (tag_counter, first_site). Pairs over data regions decode
+    spuriously; tags are candidates, not proven keys."""
+    tags = collections.Counter()
+    first_site: dict[str, int] = {}
+    for off in range(0, max(0, len(data) - 7), 4):
+        w1 = int.from_bytes(data[off : off + 4], "little")
+        if w1 & 0xFFE00000 != 0x52800000:
+            continue
+        w2 = int.from_bytes(data[off + 4 : off + 8], "little")
+        if w2 & 0xFFE00000 != 0x72A00000 or w1 & 0x1F != w2 & 0x1F:
+            continue
+        lo = (w1 >> 5) & 0xFFFF
+        hi = (w2 >> 5) & 0xFFFF
+        raw = ((hi << 16) | lo).to_bytes(4, "little")
+        if all(0x20 <= c < 0x7F for c in raw):
+            tag = raw.decode()
+            tags[tag] += 1
+            first_site.setdefault(tag, off)
+    return tags, first_site
+
+
 def analyze(data: bytes) -> str:
     lines: list[str] = []
     try:
@@ -195,6 +223,15 @@ def analyze(data: bytes) -> str:
         if shown >= 32:
             lines.append("    ... (truncated at 32 unique values)")
             break
+
+    tags, first_site = fourcc_tags(data)
+    lines.append("")
+    lines.append("## fourcc-style word tags (movz+movk w?, lsl #16, printable)")
+    lines.append("  register-built printable word tags; pairs over data regions")
+    lines.append("  decode spuriously - tags are candidates, not proven keys")
+    lines.append(f"  distinct tags: {len(tags)}, occurrences: {sum(tags.values())}")
+    for tag, n in sorted(tags.items(), key=lambda kv: (-kv[1], kv[0]))[:40]:
+        lines.append(f"  {n:>5} \"{tag}\"  first +0x{first_site[tag]:x}")
 
     return "\n".join(lines)
 
