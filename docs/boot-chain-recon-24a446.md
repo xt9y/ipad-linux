@@ -93,6 +93,54 @@ CPFM `0x03` also documents, first-hand, that this unit runs the
 production (non-development) security policy — no dev-fused lever exists
 here either.
 
+## DFU USB-surface characterization (2026-10-24)
+
+Raw session data archived **outside the repository** at
+`~/research/j407-bootchain/dfu-2026-10-24/` (full `irecovery` output —
+including device-unique ECID/nonces — USB descriptor strings, `ioreg`
+USB tree and the probe script itself). Only device-class facts below
+re-probed:
+
+```text
+usbmuxd sees 0 devices while in DFU (expected: no normal-mode services)
+USB: idVendor 0x05ac  idProduct 0x1227  bcdDevice 0x0000
+     product name: "Apple Mobile Device (DFU Mode)"
+     configuration: bMaxPower 250, iConfiguration 5
+     interface 0: class 0xfe subclass 0x01 protocol 0x00, 0 endpoints
+```
+
+DFU class-protocol behavior (read-side probes only, no dnload/erase):
+
+```text
+GETSTATUS -> bytes [0, 50, 0, 0, 2, 0]
+              dfuState=2 (dfuIdle)  dfuStatusCode=0 (OK)  pollTimeout=50ms
+GETSTATE  -> state=2 (dfuIdle)
+UPLOAD(16)   -> silent timeout (no response)
+UPLOAD(256)  -> silent timeout
+UPLOAD(1024) -> silent timeout
+GETSTATUS-after-attempts -> state=2 code=0 (clean, no error latch)
+GETSTATE-after-attempts  -> 2 (clean re-entry into dfuIdle)
+```
+
+Interpretation recorded for the research record:
+
+- the untouched (non-pwned) Apple DFU on this silicon answers the
+  standard status/state queries immediately, but its UPLOAD readback is
+  silently ignored at every size — consistent with the known
+  checkm8/usbliter8-era observation that non-pwned Apple DFU has no
+  functioning upload path, which is precisely why both public BootROM
+  exploits begin by inducing a state the ROM trusts with readback;
+- timed-out uploads do not latch the state machine into an error state
+  (clean `dfuIdle` afterwards), so repeated read-side probing is safe
+  and non-destructive as an ongoing characterization technique;
+- DFU defines interface class 0xfe/0x01/0x00 with zero endpoints — an
+  EP0-control-only surface, matching the SecureROM's trimmed-down USB
+  handling that the post-A11 hardening moved out of the vulnerable
+  generation's shape.
+
+The saved `usb-descriptors-LOCAL-ONLY.txt` contains the device-unique
+USB serial-string values; never copy them into the repo or any report.
+
 ## Status
 
 - [x] Components extracted (signed GA 27.0.1 / `24A446`)
@@ -100,5 +148,7 @@ here either.
 - [x] Component inventory + digest prefixes
 - [x] On-device boot-chain observation cross-checked
 - [x] DFU environment identification + SecureROM generation recorded
+- [x] DFU USB-surface/protocol characterization (state machine, upload policy, interface shape)
+- [x] Raw session data archived locally (`~/research/j407-bootchain/dfu-2026-10-24/`)
 - [ ] Disassembly pass (iBoot/LLB) into a structured recon document
-- [ ] USB/DFU attack-surface characterization + fuzz harness
+- [ ] DFU fuzz harness
