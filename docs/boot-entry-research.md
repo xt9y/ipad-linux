@@ -200,6 +200,8 @@ No verified public M1/T8103 J407 BootROM entry primitive is assumed by this repo
 
 Per the 2026 survey: the last public SecureROM-class primitive (usbliter8, June 2026) stops at the A13/S5 silicon generation; the last public patchable-iBoot generation tools are A5–A11-era; and the closest working iPad-native-Linux precedent (Project Cascadia, September 2026) depends on exactly those A5-era tools.
 
+Re-checked 2026-10-24: The Apple Wiki's T8103 page still lists **"Vulnerabilities: None"** for the BootROM; no new public T8103-class primitive has appeared.
+
 ## What is already ready once entry is solved
 
 The repository now has a clean target for any future legitimate entry mechanism:
@@ -223,10 +225,12 @@ J407 identity                       VERIFIED ON DEVICE (2026-08-13, re-checked 2
 normal USB-C data link              VERIFIED ON DEVICE
 Apple Recovery USB                  VERIFIED ON DEVICE
 mBoot recovery prompt               VERIFIED ON DEVICE (26.5 era)
-firmware on device (2026-10-22)     VERIFIED ON DEVICE: iPadOS 27.0 beta 7 / 24A5424a
-boot chain on device (2026-10-22)   VERIFIED ON DEVICE: mBoot-20457.2.37
+firmware on device (2026-10-24)     VERIFIED ON DEVICE: iPadOS 27.0.1 / 24A446
+                                    (beta ended and pinned 2026-10-24)
+boot chain on device (2026-10-24)   VERIFIED ON DEVICE: mBoot-20457.2.37
+BootROM (SRTG) on device            VERIFIED ON DEVICE: iBoot-5540.0.0.400.2
 matching 26.5 IPSW/BuildManifest    VERIFIED OFFLINE
-J407 iBSS/iBEC/iBoot identities     VERIFIED OFFLINE (23F77 era)
+J407 iBSS/iBEC/iBoot identities     VERIFIED OFFLINE (23F77 era, superseded by 24A446 offline pass)
 Image4 trust/personalization        VERIFIED OFFLINE
 m1n1 execution on J407              NOT ACHIEVED
 Linux execution on J407             NOT ACHIEVED
@@ -264,7 +268,9 @@ Native Linux remains technically plausible: T8103 is already a Linux-capable SoC
 - AppleDB device metadata for `iPad13,16`
   - https://appledb.dev/device/identifier/iPad13,16.html
 - The Apple Wiki — T8103
-  - https://theapplewiki.com/wiki/T8103
+  - https://theapplewiki.com/wiki/T8103 (BootROM "Vulnerabilities: None" checked 2026-10-24)
+- The iPhone Wiki — T8103 ( chipset overview, BootROM 5540.0.0.400.2, "Vulnerabilities: None" )
+  - https://www.theiphonewiki.com/wiki/T8103
 - The Apple Wiki — usbliter8 exploit (affected SecureROM range, injunction)
   - https://theapplewiki.com/wiki/Usbliter8_Exploit
 - The Hacker News — "Unpatchable usbliter8 Exploit Breaks Apple A12 and A13 SecureROM Boot Chain" (2026-06-19)
