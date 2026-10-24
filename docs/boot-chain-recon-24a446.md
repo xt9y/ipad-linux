@@ -150,5 +150,7 @@ USB serial-string values; never copy them into the repo or any report.
 - [x] DFU environment identification + SecureROM generation recorded
 - [x] DFU USB-surface/protocol characterization (state machine, upload policy, interface shape)
 - [x] Raw session data archived locally (`~/research/j407-bootchain/dfu-2026-10-24/`)
-- [ ] Disassembly pass (iBoot/LLB) into a structured recon document
-- [ ] DFU fuzz harness
+- [x] Host-side first pass on the unified image (strings / keyword / identifier corpus — see `docs/boot-image-recon-24a446.md`)
+- [x] Read-side DFU harness (`tools/dfu-fuzz.py`, offline mirror + `--allow-device` gated mode)
+- [ ] Deep disassembly pass of the unified image
+- [ ] Extended DFU fuzz campaign with per-session device approval
