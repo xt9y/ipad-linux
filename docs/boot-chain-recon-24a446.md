@@ -159,9 +159,10 @@ USB serial-string values; never copy them into the repo or any report.
 - [x] Literal-pool address-constant scan (264 known-family constants: 171 peripheral/MMIO, 73 upper MMIO/PCIe, 20 page-aligned DRAM — incl. the `0x200000000` region base itself)
 - [x] Load-base-independent code-to-data xref (`tools/boot-image-xref.py`): 9220 ADRP(+ADD) refs → 688 data pages, top pages identified as SysConfig3/DER parsing machinery
 - [x] String-anchored reverse mapping: `getenv`/`setenv`/`setenvnp` handler cluster (page 0x211), `boot-command`/`boot-args` boot-flow cluster (page 0x210), `com.apple.System.boot-nonce` registry plumbing (page 0x223), early-entry boot-property references
-- [x] Dispatch-table semantics (structural): accessor sites → exact entries → kernel low32 verified end-to-end; parallel twin partitions (identical 11-class byte-index maps; Latin-zone class boundaries); UTF-8-decoder-family hypothesis explicitly open
+- [x] Dispatch-table semantics (structural): accessor sites → exact entries → kernel low32 verified end-to-end; parallel twin partitions (identical 11-class byte-index maps); Latin-zone class boundaries superseded by stride-8 protocol texture
+- [x] Dispatch drivers identified: both consumer loops located; per-byte `ldrb → qword load → braa` PAC branch chain confirmed in both; cookie = `(0x8010<<16)|modifier` where modifier matches each driver's `braa` x17 (0xb803 / 0x23ca); LZ-style window-copy state machine with `-1`/`-2` error codes; LZFSE-family engine context confirmed by full public block-magic vocabulary (`bvx$`/`bvx-`/`bvxn`/`bvx1`/`bvx2`, `bvxl` absent, Apple-internal `avx1`/`avx2` present)
 - [x] FourCC tag scan: 414 distinct register-built word tags / 771 sites; IMG4 vocabulary cluster at 0x22508..0x22654 (IM4M/ECID/CHIP/BORD/DGST/SDOM/CSEC); bvxN/avxN codec-tag family co-located with the twin dispatch kernels (proximity, not linkage)
-- [ ] Deep analysis: cookie meaning, consumer loop identity, load-base resolution (18459 pool LDRs pending)
+- [ ] Deep analysis: LZFSE block-type↔kernel mapping, kernel-set semantics, load-base resolution (18459 pool LDRs pending)
 - [ ] Extended DFU fuzz campaign with per-session device approval
 
 ## DFU session 2 (2026-10-24 afternoon, fresh DFU entries)
