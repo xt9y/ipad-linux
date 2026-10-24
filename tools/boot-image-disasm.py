@@ -149,6 +149,28 @@ def analyze(data: bytes) -> str:
         lines.append(f"decode coverage: {pct:.1f}% (rest = literal pools/bounds data)")
     lines.append(f"  undecoded gap spans: {len(gaps)}, udf-run spans: {len(udf_spans)}")
 
+    # decode-density map: 16 KiB windows, share of words that decoded to
+    # something other than udf (data regions decode as udf/garbage)
+    WIN = 0x4000
+    if total_words > 1:
+        dens = []
+        for base in range(0, len(data) - 1, WIN):
+            hi = min(base + WIN, len(data))
+            n_words = (hi - base) // WORD
+            if n_words <= 0:
+                continue
+            good = 0
+            for row in rows:
+                if base <= row.address < hi and row.mnemonic != "udf":
+                    good += 1
+            dens.append((base, good, n_words))
+        lines.append("")
+        lines.append("## decode-density map (16 KiB windows, non-udf share)")
+        for base, good, n_words in dens[:96]:
+            pct = 100.0 * good / n_words
+            flag = "code" if pct >= 90 else ("mixed" if pct >= 25 else "data")
+            lines.append(f"  {base:#x}: {pct:5.1f}% {flag}")
+
     hist = collections.Counter(row.mnemonic for row in rows)
     lines.append("")
     lines.append("## mnemonic histogram (top 24)")

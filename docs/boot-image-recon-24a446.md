@@ -406,6 +406,18 @@ Both consumer loops are now located and the full semantic chain closes:
 
 **Hypothesis (explicitly labeled, unconfirmed):** the twin 256/255-entry tables are the per-byte interpreter engines inside the iBoot LZFSE-family decoder — byte-driven kernel dispatch with PAC-signed branches, window copying, and error-return codes. Identifying which LZFSE block/field the byte stream belongs to, and the exact kernel set semantics, is future work; device-side confirmation is not available from the DFU surface.
 
+## measured image layout (decode-density)
+
+`tools/boot-image-disasm.py` now emits a 16 KiB decode-density map (share of words decoding to non-`udf` instructions). Measured on the 24A446 image:
+
+- **code** (≥90% density) `0x0..0x14b000` — the main module collection; the LZFSE-family engine and its twin per-byte dispatch tables both live here (`0x140xxxxxxxx`-adjacent region and `0x144xxx..0x146xxx`).
+- **mixed/partial** `0x14b000..0x15b000` decays to mixed (`0x153000..`), then **data** `0x15b000..0x197000` (near 0% density) — the pointer-table/pool region hosting the `0x1fc…`-tagged pointer blocks, the dispatch tables (`0x1945a8`/`0x194da8`), and pool constants into image code offsets (tagged pointers seen: `0x8010_0000_0015_7f6c`, `0x80c0_0000_0013_16d8`).
+- **string table** `0x197000..0x19e000` (28 KiB dense printable, incl. `iBoot`/`iBEC`/`IMG4`/`IM4P` text and the build strings).
+- **data blobs** `0x19e000..0x20f000` (sparse decode residue only), partial `0x20f000..0x213000` (26%), sparse remainder to `0x226000`, and a 2 KiB printable tail `0x226000..0x2269d8`.
+- No second mach-o/sub-image header found (no `feedfac*`/`fat` magic anywhere).
+
+Note: the fourcc tag-builder clusters previously described (IMG4 vocabulary at `0x22508..0x22654`, `bvxN` at `0x144xxx`) sit **inside the code region** — verified by instruction-level disassembly at each site (`cmp`/`movk`/`b` sequences, not data tables).
+
 ## fourcc-style word tags (movz+movk scan)
 
 New pass in `tools/boot-image-disasm.py` (`fourcc_tags`): scans aligned words for `movz w?, #imm16` + `movk w?, #imm16, lsl #16` pairs on the same register, keeps pairs whose 32-bit concatenation is printable ASCII (0x20–0x7E) in little-endian memory order. Encoding-based matching on raw instruction words (`movz` hw=0 = `0x52800000` mask, `movk` hw=1 = `0x72A00000` mask, same Rd in bits 0–4) — capstone 5 renders `movz` as `mov`, so mnemonic matching is not reliable. Data-as-code regions decode spuriously; tags are candidates. Covered by a unit test with hand-encoded fixtures (`movz w0, #0x6f73` = `0x528DEE60`; `movk w0, #0x4431, lsl #16` = `0x72A88620`; tag `"so1D"`; a non-printable pair excluded).

@@ -74,6 +74,16 @@ class BootImageDisasmTest(unittest.TestCase):
         self.assertIn('"so1D"', report)
         self.assertIn("distinct tags: 1", report)
 
+    def test_decode_density_map(self):
+        # window of nops (codes fine) followed by a udf junk block
+        data = bytes.fromhex("1f2003d5") * 16          # nop x16
+        data += bytes(4096)                            # junk block (udf)
+        data += bytes.fromhex("c0035fd6")              # ret tail
+        report = boot_image_disasm.analyze(data)
+        self.assertIn("## decode-density map", report)
+        self.assertIn("code", report)
+        self.assertIn("data", report)
+
     def test_cli_writes_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "image.bin"
