@@ -60,11 +60,45 @@ Implications recorded for the research record:
   in this reconnaissance; digests above are content hashes of
   publicizable images.
 
+## DFU environment — observed on device (2026-10-24)
+
+Probed once the physical device was placed in hardware DFU mode
+(read-only `irecovery` identification only — no writes, no payload
+uploads; device-unique values such as ECID/serial and the DFU nonces
+are deliberately omitted from this record):
+
+```text
+CPID:       0x8103          (T8103 / Apple M1 - matches all prior records)
+CPRV:       0x11
+BDID:       0x10            (J407AP - matches all prior records)
+CPFM:       0x03            (production security policy)
+SCEP:       0x01
+IBFL:       0x3c
+SRTG:       iBoot-5540.0.0.400.2   <- SecureROM generation tag
+MODE:       DFU
+PRODUCT:    iPad13,16  MODEL: j407ap
+```
+
+### Cross-check against the 2026 survey
+
+The usbliter8 (June 2026) affected SecureROM range is documented as
+`3865.0.0.4.7 – 4479.0.0.100.4`, with newer silicon carrying the fix
+(`5281.0.0.100.45` as the listed "fixed-in" generation). This device's
+SecureROM is tagged **`iBoot-5540.0.0.400.2`** — strictly *newer* than
+the documented fix generation. First-hand confirmation of the survey
+conclusion: the last public BootROM exploit class ends a full
+SecureROM-generation window below this chip's ROM.
+
+CPFM `0x03` also documents, first-hand, that this unit runs the
+production (non-development) security policy — no dev-fused lever exists
+here either.
+
 ## Status
 
 - [x] Components extracted (signed GA 27.0.1 / `24A446`)
 - [x] Unpack to raw payloads
 - [x] Component inventory + digest prefixes
 - [x] On-device boot-chain observation cross-checked
+- [x] DFU environment identification + SecureROM generation recorded
 - [ ] Disassembly pass (iBoot/LLB) into a structured recon document
-- [ ] USB/DFU attack-surface characterization (requires device in DFU)
+- [ ] USB/DFU attack-surface characterization + fuzz harness
