@@ -152,5 +152,6 @@ USB serial-string values; never copy them into the repo or any report.
 - [x] Raw session data archived locally (`~/research/j407-bootchain/dfu-2026-10-24/`)
 - [x] Host-side first pass on the unified image (strings / keyword / identifier corpus — see `docs/boot-image-recon-24a446.md`)
 - [x] Read-side DFU harness (`tools/dfu-fuzz.py`, offline mirror + `--allow-device` gated mode)
-- [ ] Deep disassembly pass of the unified image
+- [x] Structured decode pass (Capstone, 84.2% coverage, PAC prologues found — see `docs/boot-image-recon-24a446.md`)
+- [ ] Deep analysis: literal-pool/load-base resolution + handler-cluster mapping
 - [ ] Extended DFU fuzz campaign with per-session device approval

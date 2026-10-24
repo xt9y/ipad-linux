@@ -92,3 +92,146 @@ total printable tokens: 1953 (unique 1348)
 ## entropy (48 KiB windows)
   windows: 46 high-entropy(>3.0): 41 low: 5
 ```
+
+---
+
+## capstone decode pass
+
+Address-base-free structured decoder pass (same raw unified `mBoot-20457.2.37` payload), gap-skipping across literal pools. All offsets are image-relative; pool/absolute-constant resolution is a follow-on step. Data regions additionally decode as spurious instructions — coverage is an upper bound there.
+
+```text
+## coverage
+image words: 563830, decoded instructions: 474556
+decode coverage: 84.2% (rest = literal pools/bounds data)
+
+## mnemonic histogram (top 24)
+    83471 udf
+    63088 mov
+    50506 bl
+    38813 add
+    23202 stp
+    21015 ldr
+    19784 ldp
+    17690 str
+    14705 cmp
+    11865 adrp
+    10809 b
+     7278 b.hs
+     6906 sub
+     6717 cbz
+     6522 movk
+     5895 ccmp
+     4807 stur
+     4662 ret
+     4330 pacibsp
+     3988 tbz
+     3633 b.ne
+     3388 csel
+     3316 retab
+     3176 eor
+
+## system-register access surface (all)
+      2 mrs actlr_el2
+      1 mrs ccsidr_el1
+      1 mrs clidr_el1
+      1 mrs cntfrq_el0
+      2 mrs cntkctl_el1
+      1 mrs cntp_ctl_el0
+      1 mrs cpacr_el1
+      8 mrs elr_el1
+      2 mrs esr_el1
+      1 mrs far_el1
+      2 mrs fpcr
+      2 mrs fpsr
+      1 mrs hcr_el2
+      1 mrs id_aa64isar0_el1
+      1 mrs id_aa64pfr0_el1
+      1 mrs isr_el1
+      3 mrs mpidr_el1
+      1 mrs par_el1
+      1 mrs s0_0_c11_c8_4
+      1 mrs s0_2_c6_c13_6
+      1 mrs s0_3_c3_c10_5
+      1 mrs s0_4_c1_c9_0
+      1 mrs s0_5_c14_c10_1
+      1 mrs s0_5_c2_c6_7
+      1 mrs s0_6_c0_c3_4
+      1 mrs s2_0_c2_c0_3
+      1 mrs s2_1_c4_c0_4
+      1 mrs s2_2_c1_c9_6
+      1 mrs s2_3_c0_c15_0
+      1 mrs s2_7_c0_c6_0
+      1 mrs s2_7_c2_c4_7
+      1 mrs s3_1_c3_c14_2
+      5 mrs s3_3_c15_c7_0
+      1 mrs s3_3_c9_c0_2
+      1 mrs s3_4_c15_c10_5
+      2 mrs s3_4_c15_c2_5
+      1 mrs s3_5_c14_c0_2
+      1 mrs s3_5_c15_c0_6
+      1 mrs s3_6_c14_c13_0
+      2 mrs s3_6_c15_c14_6
+      1 mrs s3_6_c7_c3_4
+      1 mrs s3_7_c0_c7_7
+      4 mrs sctlr_el1
+      4 mrs sp_el0
+      2 mrs spsr_el1
+      2 mrs tcr_el1
+      2 mrs tpidr_el0
+      3 mrs tpidr_el1
+      1 mrs tpidrro_el0
+      4 mrs ttbr0_el1
+      5 mrs ttbr1_el1
+      1 msr #0
+      2 msr #0xf
+      2 msr #1
+      1 msr #4
+     35 msr x0
+     20 msr x1
+      3 msr x10
+      2 msr x11
+      1 msr x15
+      2 msr x16
+      2 msr x19
+      6 msr x2
+      1 msr x23
+
+## call landscape
+  bl/blr instructions: 50506
+  distinct bl targets: 10120
+
+## adrp/adr page-cluster histogram (top 16, page-relative buckets)
+   1696 page+0x159
+    713 page+0x23e
+    596 page+0x197
+    459 page+0x1e3
+    388 page+0x15a
+    326 page+0x199
+    312 page+0x20c
+    305 page+0x19a
+    289 page+0x19c
+    286 page+0x23b
+    271 page+0x1e4
+    219 page+0x19b
+    216 page+0x236
+    203 page+0x23d
+    195 page+0x198
+    186 page+0x224
+
+## movk shift-histogram (top 16)
+   1042 2
+    257 0xbad0
+    141 0x3d
+    136 0x21
+    130 0x35
+    130 0x25
+    129 0x2d
+    128 0x31
+    125 0x29
+    116 0x39
+     96 0x20
+     74 0x200
+     60 0x24
+     57 0x3c
+     52 0x7450
+     52 0x4e6f```

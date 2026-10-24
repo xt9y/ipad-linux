@@ -143,7 +143,8 @@ PYTHON_TESTS := \
 	tests/check_j407_firmware_test.py \
 	tests/z2fw_test.py \
 	tests/dfu_fuzz_test.py \
-	tests/boot_image_recon_test.py
+	tests/boot_image_recon_test.py \
+	tests/boot_image_disasm_test.py
 
 test: host-tests $(PYTHON_TESTS)
 

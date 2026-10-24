@@ -18,6 +18,7 @@ on:
       - 'tests/z2fw_test.py'
       - 'tests/dfu_fuzz_test.py'
       - 'tests/boot_image_recon_test.py'
+      - 'tests/boot_image_disasm_test.py'
       - 'tests/adt_function_test.c'
       - 'tests/adt_clock_test.c'
       - 'src/adt/**'
@@ -38,6 +39,7 @@ on:
       - 'tests/z2fw_test.py'
       - 'tests/dfu_fuzz_test.py'
       - 'tests/boot_image_recon_test.py'
+      - 'tests/boot_image_disasm_test.py'
       - 'tests/adt_function_test.c'
       - 'tests/adt_clock_test.c'
       - 'src/adt/**'
@@ -100,6 +102,9 @@ jobs:
 
       - name: Test boot image recon tool
         run: python3 -m unittest -v tests/boot_image_recon_test.py
+
+      - name: Test boot image decode pass
+        run: python3 -m unittest -v tests/boot_image_disasm_test.py
 
       - name: Test Z2FW touchscreen validator
         run: python3 -m unittest -v tests/z2fw_test.py
