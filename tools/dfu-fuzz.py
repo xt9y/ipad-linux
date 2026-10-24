@@ -75,11 +75,13 @@ def build_vectors() -> list[Vector]:
     for _ in range(2):
         vectors.append(Vector("GETSTATUS", 0x03, data_len=6))
         vectors.append(Vector("GETSTATE", 0x05, data_len=1))
-    vectors.append(Vector("ABORT", 0x06))
-    vectors.append(Vector("CLRSTATUS", 0x04))
+    vectors.append(Vector("ABORT", 0x06, bm_request_type=0x21))
+    vectors.append(Vector("CLRSTATUS", 0x04, bm_request_type=0x21))
     for size in (8, 16, 256, 1024):
         vectors.append(Vector(f"UPLOAD({size})", 0x02, data_len=size))
     vectors.append(Vector("GETSTATUS(wrong-interface)", 0x03, data_len=6, w_index=1))
+    vectors.append(Vector("GETSTATE(wrong-interface)", 0x05, data_len=1, w_index=1))
+    vectors.append(Vector("ABORT(again)", 0x06, bm_request_type=0x21))
     return vectors
 
 
@@ -130,16 +132,28 @@ def run_device() -> int:
     for vector in build_vectors():
         stamp = time.strftime("%H:%M:%S")
         try:
-            ret = dev.ctrl_transfer(
-                vector.bm_request_type, vector.b_request,
-                vector.w_value, vector.w_index,
-                vector.length if vector.b_request not in (0x04, 0x06) else 0,
-                timeout=2000,
-            )
-            data = bytes(ret)
-            status = "OK"
-            result = f"bytes={len(data)} head={data[:8].hex()}"
-            digest = hashlib.sha256(data).hexdigest()[:16] if data else "-"
+            if vector.bm_request_type & 0x80:
+                # device-to-host: read N bytes
+                ret = dev.ctrl_transfer(
+                    vector.bm_request_type, vector.b_request,
+                    vector.w_value, vector.w_index, vector.length,
+                    timeout=2000,
+                )
+                data = bytes(ret)
+                status = "OK"
+                result = f"bytes={len(data)} head={data[:8].hex() if data else '-'}"
+                digest = hashlib.sha256(data).hexdigest()[:16] if data else "-"
+            else:
+                # host-to-device class request, zero-length data stage
+                dev.ctrl_transfer(
+                    vector.bm_request_type, vector.b_request,
+                    vector.w_value, vector.w_index, b"",
+                    timeout=2000,
+                )
+                data = b""
+                status = "OK"
+                result = "sent (zero-length OUT)"
+                digest = "-"
         except Exception as exc:
             status = type(exc).__name__
             result = str(exc)[:80]
