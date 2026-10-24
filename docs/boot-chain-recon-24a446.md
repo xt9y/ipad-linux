@@ -153,5 +153,6 @@ USB serial-string values; never copy them into the repo or any report.
 - [x] Host-side first pass on the unified image (strings / keyword / identifier corpus — see `docs/boot-image-recon-24a446.md`)
 - [x] Read-side DFU harness (`tools/dfu-fuzz.py`, offline mirror + `--allow-device` gated mode)
 - [x] Structured decode pass (Capstone, 84.2% coverage, PAC prologues found — see `docs/boot-image-recon-24a446.md`)
-- [ ] Deep analysis: literal-pool/load-base resolution + handler-cluster mapping
+- [x] Literal-pool address-constant scan (264 known-family constants: 171 peripheral/MMIO, 73 upper MMIO/PCIe, 20 page-aligned DRAM — incl. the `0x200000000` region base itself)
+- [ ] Deep analysis: load-base resolution + handler-cluster mapping
 - [ ] Extended DFU fuzz campaign with per-session device approval

@@ -26,25 +26,89 @@ def decode(data: bytes):
     md = capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_LITTLE_ENDIAN)
     md.detail = False
     rows = []
+    gaps = []
+    udf_spans = []
+    udf_start = None
     offset = 0
     # Capstone stops at the first undecodable word; restart past it so we
     # cover the whole blob (gap words are literal pools / bounds data).
     while offset < len(data):
+        bank_start = offset
         got = 0
         for insn in md.disasm(data[offset:], offset):
             rows.append(insn)
             got += insn.size
+            if insn.mnemonic == "udf":
+                if udf_start is None:
+                    udf_start = insn.address
+            elif udf_start is not None:
+                udf_spans.append((udf_start, insn.address))
+                udf_start = None
         if got == 0:
             offset += WORD
         else:
             offset += got
-    return md, rows
+        if got == 0:
+            # Coalesce adjacent failing words into one gap span.
+            if gaps and gaps[-1][1] == bank_start:
+                gaps[-1] = (gaps[-1][0], offset)
+            else:
+                gaps.append((bank_start, offset))
+            if udf_start is not None:
+                udf_spans.append((udf_start, bank_start))
+                udf_start = None
+    if udf_start is not None:
+        udf_spans.append((udf_start, offset))
+    return md, rows, gaps, udf_spans
+
+
+def address_family(value: int) -> str | None:
+    """Classify an absolute-looking constant into known T8103 memory-map
+    families (public Asahi/dtb knowledge).
+
+    The image's data regions are full of packed 2x u32 config-table
+    pairs, so the scan keys on the HIGH 32 bits: all real T8103
+    physical addresses are < 2^40, making the high word the region
+    selector. Packed pairs with a small non-address high word are
+    rejected; DRAM hits additionally require 4 KiB page alignment.
+    """
+    if value < 0x100000000:
+        return None
+    high = value >> 32
+    low = value & 0xFFFFFFFF
+    if high == 0x8 and (low & 0xFFF) == 0:
+        return "DRAM region (base 0x800000000)"
+    if high == 0x2:
+        return "peripherals/MMIO (base 0x200000000)"
+    if high in (0x5, 0x6):
+        return "upper MMIO/PCIe window"
+    return None
+
+
+def pool_constants(data: bytes, spans) -> list[tuple[int, int, str]]:
+    """Extract 8-byte-aligned absolute-looking constants from data spans
+    (undecoded gap words and long udf runs — the literal pools). A qword
+    must lie fully inside a span; the all-ones sentinel is dropped.
+    Returns (offset, value, family)."""
+    out: list[tuple[int, int, str]] = []
+    for start, end in spans:
+        if end - start < 8:
+            continue
+        first = ((start + 7) // 8) * 8
+        for off in range(first, end - 7, 8):
+            value = int.from_bytes(data[off : off + 8], "little")
+            if value == 0xFFFFFFFFFFFFFFFF:
+                continue
+            family = address_family(value)
+            if family is not None:
+                out.append((off, value, family))
+    return out
 
 
 def analyze(data: bytes) -> str:
     lines: list[str] = []
     try:
-        _, rows = decode(data)
+        _, rows, gaps, udf_spans = decode(data)
     except Exception as exc:  # pragma: no cover
         return f"decode failed: {exc}"
 
@@ -55,6 +119,7 @@ def analyze(data: bytes) -> str:
     if total_words:
         pct = 100.0 * decoded_words / total_words
         lines.append(f"decode coverage: {pct:.1f}% (rest = literal pools/bounds data)")
+    lines.append(f"  undecoded gap spans: {len(gaps)}, udf-run spans: {len(udf_spans)}")
 
     hist = collections.Counter(row.mnemonic for row in rows)
     lines.append("")
@@ -77,10 +142,12 @@ def analyze(data: bytes) -> str:
     for row in rows:
         if row.mnemonic in ("bl", "blr"):
             bl_targets[row.op_str] += 1
+    direct = sum(n for t, n in bl_targets.items() if t.startswith("#"))
+    indirect = sum(n for t, n in bl_targets.items() if not t.startswith("#"))
     lines.append("")
     lines.append("## call landscape")
-    lines.append(f"  bl/blr instructions: {sum(bl_targets.values())}")
-    lines.append(f"  distinct bl targets: {len([t for t in bl_targets if t != '—'])}")
+    lines.append(f"  bl/blr instructions: {sum(bl_targets.values())} (direct bl: {direct}, register-indirect: {indirect})")
+    lines.append(f"  distinct direct bl targets: {sum(1 for t in bl_targets if t.startswith('#'))}")
 
     adrp_pages = collections.Counter()
     for row in rows:
@@ -108,6 +175,26 @@ def analyze(data: bytes) -> str:
     lines.append("## movk shift-histogram (top 16)")
     for imm, n in movz_set.most_common(16):
         lines.append(f"  {n:>5} {imm}")
+
+    constants = pool_constants(data, sorted(gaps + udf_spans))
+    fam_counts = collections.Counter(family for _, _, family in constants)
+    lines.append("")
+    lines.append("## literal-pool address-constant candidates (known families only)")
+    lines.append(f"  scan spans (gaps + udf runs): {len(gaps) + len(udf_spans)}, address-like pool constants: {len(constants)}")
+    for family, n in fam_counts.most_common():
+        lines.append(f"  {n:>5} {family}")
+    family_rank = {name: rank for rank, name in enumerate(fam_counts)}
+    seen: set[int] = set()
+    shown = 0
+    for off, value, family in sorted(constants, key=lambda c: (family_rank[c[2]], c[0])):
+        if value in seen:
+            continue
+        seen.add(value)
+        lines.append(f"    0x{value:016x} @ +0x{off:x}  {family}")
+        shown += 1
+        if shown >= 32:
+            lines.append("    ... (truncated at 32 unique values)")
+            break
 
     return "\n".join(lines)
 

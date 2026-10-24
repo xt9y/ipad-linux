@@ -97,12 +97,13 @@ total printable tokens: 1953 (unique 1348)
 
 ## capstone decode pass
 
-Address-base-free structured decoder pass (same raw unified `mBoot-20457.2.37` payload), gap-skipping across literal pools. All offsets are image-relative; pool/absolute-constant resolution is a follow-on step. Data regions additionally decode as spurious instructions — coverage is an upper bound there.
+Address-base-free structured decoder pass (same raw unified `mBoot-20457.2.37` payload), gap-skipping across literal pools. All offsets are image-relative; load-base resolution is a follow-on step. Data regions additionally decode as spurious instructions — coverage is an upper bound there. The literal-pool section extracts 8-byte-aligned constants from undecoded gap spans and long udf runs, keyed on the high 32 bits (all T8103 physical addresses are < 2^40, so the high word selects the region); packed dword-pair config tables and string data are filtered out, and DRAM-classified values must be 4 KiB page aligned (candidate values, not proven pointers).
 
 ```text
 ## coverage
 image words: 563830, decoded instructions: 474556
 decode coverage: 84.2% (rest = literal pools/bounds data)
+  undecoded gap spans: 41055, udf-run spans: 32901
 
 ## mnemonic histogram (top 24)
     83471 udf
@@ -197,8 +198,8 @@ decode coverage: 84.2% (rest = literal pools/bounds data)
       1 msr x23
 
 ## call landscape
-  bl/blr instructions: 50506
-  distinct bl targets: 10120
+  bl/blr instructions: 50506 (direct bl: 50506, register-indirect: 0)
+  distinct direct bl targets: 10120
 
 ## adrp/adr page-cluster histogram (top 16, page-relative buckets)
    1696 page+0x159
@@ -234,4 +235,43 @@ decode coverage: 84.2% (rest = literal pools/bounds data)
      60 0x24
      57 0x3c
      52 0x7450
-     52 0x4e6f```
+     52 0x4e6f
+
+## literal-pool address-constant candidates (known families only)
+  scan spans (gaps + udf runs): 73956, address-like pool constants: 264
+    171 peripherals/MMIO (base 0x200000000)
+     73 upper MMIO/PCIe window
+     20 DRAM region (base 0x800000000)
+    0x0000000200000000 @ +0x309b8  peripherals/MMIO (base 0x200000000)
+    0x0000000200000004 @ +0x159b88  peripherals/MMIO (base 0x200000000)
+    0x000000020000000c @ +0x15a210  peripherals/MMIO (base 0x200000000)
+    0x0000000200000040 @ +0x15a640  peripherals/MMIO (base 0x200000000)
+    0x00000002000000c8 @ +0x15a660  peripherals/MMIO (base 0x200000000)
+    0x0000000200000118 @ +0x15b438  peripherals/MMIO (base 0x200000000)
+    0x0000000200000014 @ +0x15c1e8  peripherals/MMIO (base 0x200000000)
+    0x0000000200000070 @ +0x15c200  peripherals/MMIO (base 0x200000000)
+    0x000000020000004c @ +0x15c268  peripherals/MMIO (base 0x200000000)
+    0x0000000200000024 @ +0x15c2f8  peripherals/MMIO (base 0x200000000)
+    0x0000000200000034 @ +0x15ddb0  peripherals/MMIO (base 0x200000000)
+    0x000000020000002c @ +0x15ddc8  peripherals/MMIO (base 0x200000000)
+    0x0000000200000048 @ +0x15ddf8  peripherals/MMIO (base 0x200000000)
+    0x000000020000024c @ +0x15df08  peripherals/MMIO (base 0x200000000)
+    0x0000000200002808 @ +0x15ec58  peripherals/MMIO (base 0x200000000)
+    0x0000000200000090 @ +0x15f380  peripherals/MMIO (base 0x200000000)
+    0x0000000200000028 @ +0x160ab8  peripherals/MMIO (base 0x200000000)
+    0x0000000200000060 @ +0x188820  peripherals/MMIO (base 0x200000000)
+    0x0000000200000140 @ +0x1888a8  peripherals/MMIO (base 0x200000000)
+    0x00000002000000cc @ +0x188cd0  peripherals/MMIO (base 0x200000000)
+    0x0000000200000400 @ +0x18e820  peripherals/MMIO (base 0x200000000)
+    0x0000000200000008 @ +0x18f1e8  peripherals/MMIO (base 0x200000000)
+    0x00000002000000f0 @ +0x18f538  peripherals/MMIO (base 0x200000000)
+    0x0000000200000018 @ +0x18f858  peripherals/MMIO (base 0x200000000)
+    0x00000002000000a0 @ +0x18fa68  peripherals/MMIO (base 0x200000000)
+    0x0000000200000128 @ +0x18fa88  peripherals/MMIO (base 0x200000000)
+    0x0000000200000030 @ +0x1906c8  peripherals/MMIO (base 0x200000000)
+    0x00000002000000d8 @ +0x190708  peripherals/MMIO (base 0x200000000)
+    0x00000002000002e8 @ +0x1907a8  peripherals/MMIO (base 0x200000000)
+    0x0000000200000390 @ +0x1907e8  peripherals/MMIO (base 0x200000000)
+    0x00000002000005a0 @ +0x190888  peripherals/MMIO (base 0x200000000)
+    0x0000000200000648 @ +0x1908c8  peripherals/MMIO (base 0x200000000)
+    ... (truncated at 32 unique values)```
