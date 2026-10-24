@@ -307,3 +307,12 @@ top referenced pages with resident strings (candidates for string/config tables 
   page+0x28a:   43 refs  (no strings)
   page+0x1a7:   42 refs  "cwFS6z"
   page+0x1de:   42 refs  (no strings)```
+
+## literal-pool structure finding (two 256-class dispatch tables)
+
+From the pool/udf-span qword scan plus follow-up verification (all offsets image-relative):
+
+- Table A: 256 contiguous qword entries at `0x1945a8`–`0x194da0`, each `{low32, 0x8010b803}`. The low32 values resolve to exactly **11 distinct code offsets** (e.g. `0x140ca0`, `0x140cd4`, `0x140d08`, …) inside a 0x2c0-wide window.
+- Table B: 255 contiguous qword entries at `0x194da8`–`0x195598` directly adjacent, each `{low32, 0x801023ca}`, resolving to 11 distinct code offsets around `0x145adc`–`0x145b6c`.
+- Verify: bytes at the resolved targets decode as clean AArch64 bit-manipulation kernels (`lsr X, X, #6` / `add` / `cmp` / `b.hi` / `ubfx`) — the low32 halves are genuine image-relative code offsets, not coincidence.
+- Interpretation left open: 256/255-entry tables mapping byte-index-like values to 11 handlers each, with a constant per-table 32-bit cookie. A 256-entry byte-indexed dispatch shape is consistent with table-driven byte kernels; the exact semantics are unidentified and were not confirmed on-device. No load base was assumed or derived — the pool does not appear to store absolute pointers into the image.
