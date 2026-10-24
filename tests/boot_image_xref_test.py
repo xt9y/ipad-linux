@@ -49,6 +49,14 @@ class BootImageXrefTest(unittest.TestCase):
         self.assertIn("page+0x15", report)
         self.assertIn('"BOOT-COMMAND-TABLE"', report)
 
+    def test_string_anchored_references(self):
+        report = boot_image_xref.analyze(self.synthetic_image())
+        self.assertIn("## string-anchored references", report)
+        self.assertIn('"getenv"', report)
+        # the page holding getenv is referenced once, from pc 0x0
+        self.assertIn("page+0x15:   1 refs", report)
+        self.assertIn("from +0x0", report)
+
     def test_cli_writes_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "image.bin"

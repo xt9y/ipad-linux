@@ -316,3 +316,71 @@ From the pool/udf-span qword scan plus follow-up verification (all offsets image
 - Table B: 255 contiguous qword entries at `0x194da8`–`0x195598` directly adjacent, each `{low32, 0x801023ca}`, resolving to 11 distinct code offsets around `0x145adc`–`0x145b6c`.
 - Verify: bytes at the resolved targets decode as clean AArch64 bit-manipulation kernels (`lsr X, X, #6` / `add` / `cmp` / `b.hi` / `ubfx`) — the low32 halves are genuine image-relative code offsets, not coincidence.
 - Interpretation left open: 256/255-entry tables mapping byte-index-like values to 11 handlers each, with a constant per-table 32-bit cookie. A 256-entry byte-indexed dispatch shape is consistent with table-driven byte kernels; the exact semantics are unidentified and were not confirmed on-device. No load base was assumed or derived — the pool does not appear to store absolute pointers into the image.
+
+## string-anchored references pass
+
+Reverse index over the ADRP(+ADD) graph (`tools/boot-image-xref.py` extension): which code pages form addresses into the string namespace. Page-level attribution (a formation pair targets one address; other strings sharing that page are listed). Highlights:
+
+- `getenv`/`setenv`/`setenvnp` cluster: page 0x211, referenced from code at `+0x778ac`, `+0x89778`, `+0xb76dc`, `+0xb78cc`, `+0xb80d4`, `+0xb8174` and more — the environment variable machinery handler cluster.
+- `boot-command`, `boot-args`, `iBootData`, `auto-boot-once`: page 0x210, referencing code pages ~`0x88-b4` (the boot-flow callout cluster).
+- `com.apple.System.boot-nonce`: page 0x223 with 20 referencing sites in the `0x96-b4` region (platform nonce registry plumbing).
+- Early-entry anchors: the image value at `+0x1c` already forms the address of the `mBoot-20457.2.37` string, and the `0xb24-0xf4c` range references the `recovery-boot-mode`/`boot-device`/`boot-path` namespace — first-boot property flows happen before much else.
+
+Sample code windows at cluster sites (raw texture, decoded offline):
+
+```text
+--- at 0x778a8
+    0x778a0  b.eq    #0x778c8
+    0x778a4  and     w8, w1, #0xfffffffd
+    0x778a8  cbnz    w8, #0x778c8
+    0x778ac  adrp    x0, #0x19a000
+    0x778b0  add     x0, x0, #0x33a
+    0x778b4  adrp    x3, #0x159000
+    0x778b8  add     x3, x3, #0xbb8
+    0x778bc  add     x2, x0, #0xb
+    0x778c0  mov     x1, x0
+    0x778c4  b       #0xe174c
+--- at 0x89778
+    0x89770  add     x4, x4, #0x108
+    0x89774  b       #0x136cf8
+    0x89778  adrp    x4, #0x188000
+    0x8977c  add     x4, x4, #0xa28
+    0x89780  b       #0x136cf8
+    0x89784  mov     x0, #0x72c3
+    0x89788  movk    x0, #0x36c1, lsl #16
+    0x8978c  movk    x0, #0xf5bc, lsl #32
+    0x89790  movk    x0, #0xd25, lsl #48
+    0x89794  ret     
+--- at 0xb76dc
+    0xb76d4  str     xzr, [sp, #0x28]
+    0xb76d8  add     x8, sp, #0x28
+    0xb76dc  adrp    x4, #0x15a000
+    0xb76e0  add     x4, x4, #0x200
+    0xb76e4  add     x1, sp, #0x28
+    0xb76e8  add     x2, sp, #0x28
+    0xb76ec  add     x3, x8, #0xc
+    0xb76f0  mov     w0, #0x6f73
+    0xb76f4  movk    w0, #0x4431, lsl #16
+    0xb76f8  bl      #0xb71c4
+```
+
+```text
+## string-anchored references
+pages of interest that ADRP(+ADD) formation pairs target,
+with the referencing code pages (page-level attribution: a
+pair targets one address; residents of the same page are shown):
+  page+0x19c:  74 refs from +0x5168; +0x517c; +0x51e0; +0x53d8; +0x549c; +0x54e4 (+68 more)  strings: ["iboot-data", "boot-object-manifests", "secure-boot-hashes", "VMiBoot", "iBootIm", "iboot-]
+  page+0x19b:  54 refs from +0x4018; +0x4050; +0x4078; +0x40b0; +0x40e4; +0x40f8 (+48 more)  strings: ["disable-boot-wdt", "dev-unset-debug-enabled", "arm-io/dart-", "dart-tunables-instance-", ]
+  page+0x19d:  52 refs from +0x6024; +0x6038; +0x6040; +0x6070; +0x6078; +0x60a4 (+46 more)  strings: ["DERDecodeSysConfig3ParseAndPopulateMetadataSequence", "DERDecodedInfo", "SysConfig3Payloa]
+  page+0x19a:  40 refs from +0x32ec; +0x369c; +0x3a24; +0x3b60; +0x3cc8; +0x3e64 (+34 more)  strings: ["iboot-handoff", "dart-apciec0", "dart-usb0", "dart-acio0", "dart-apciec1", "dart-usb1", "]
+  page+0x198:  34 refs from +0x1298; +0x12c8; +0x13c4; +0x148c; +0x14f4; +0x15c0 (+28 more)  strings: ["boot-args"]
+  page+0x19e:  32 refs from +0x7068; +0x7078; +0x709c; +0x7138; +0x7394; +0x73bc (+26 more)  strings: ["SysConfig3", "SysConfigData", "SysConfig3", "SysConfigData"]
+  page+0x199:  28 refs from +0x2288; +0x2294; +0x2620; +0x2660; +0x2720; +0x2810 (+22 more)  strings: ["boot-ios-diagnostics", "debug-enabled", "secure-boot", "boot-nonce", "boot-nonce-hash-met]
+  page+0x200:  26 refs from +0x65c3c; +0x65c68; +0x65c9c; +0x65d00; +0x65d20; +0x65d44 (+20 more)  strings: ["mBoot-20457.2.37"]
+  page+0x218:  25 refs from +0x39574; +0x3ba44; +0x7d0fc; +0x7d34c; +0x7d910; +0x7d97c (+19 more)  strings: ["dart-ane", "dart-aop", "dart-ave", "dart-isp", "dart-sio"]
+  page+0x223:  20 refs from +0x9679c; +0x969b0; +0x96aac; +0x96b80; +0x96c30; +0x96c7c (+14 more)  strings: ["com.apple.System.boot-nonce"]
+  page+0x210:  19 refs from +0x88bf0; +0x88e48; +0x88e7c; +0x88fe0; +0xb0500; +0xb4a3c (+13 more)  strings: ["iBootData", "iBootData", "boot-args", "auto-boot-once", "boot-command", "com.apple.System]
+  page+0x211:  19 refs from +0x778ac; +0x89778; +0xb76dc; +0xb78cc; +0xb80d4; +0xb8174 (+13 more)  strings: ["getenv", "setenv", "setenvnp"]
+  page+0x197:  17 refs from +0xb24; +0xb58; +0xcac; +0xdec; +0xe98; +0xf4c (+11 more)  strings: ["recovery-boot-mode", "boot-breadcrumbs", "boot-ramdisk", "boot-path", "boot-device", "boo]
+  page+0x215:  16 refs from +0x7d1a0; +0x7d8cc; +0x7da5c; +0x7ea70; +0x889c8; +0xbc114 (+10 more)  strings: ["fsboot-safe", "dart-dcp", "dart-disp0", "dart-disp0", "dart-dcpext", "dart-dispext0", "da]
+  page+0x0:   1 refs from +0x1c  strings: ["mBoot-20457.2.37"]```

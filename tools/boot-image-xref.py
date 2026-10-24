@@ -84,6 +84,28 @@ def count_literal_loads(rows) -> int:
     return n
 
 
+OF_INTEREST = (
+    "getenv", "setenv", "boot-", "boot-command", "boot-stage", "boot-nonce",
+    "debug-enabled", "secure-boot", "dfu", "dart-", "SysConfig",
+    "DERDecode", "DART", "iBoot", "mBoot",
+)
+
+
+def interesting_strings(strings: dict[int, str], of_interest=OF_INTEREST):
+    return {
+        off: txt for off, txt in strings.items()
+        if any(p in txt for p in of_interest)
+    }
+
+
+def reverse_index(pairs) -> dict[int, list[int]]:
+    """target page -> referencing instruction PCs (image offsets)."""
+    refs: dict[int, list[int]] = collections.defaultdict(list)
+    for target, pc in pairs:
+        refs[target // PAGE].append(pc)
+    return refs
+
+
 def analyze(data: bytes) -> str:
     lines: list[str] = []
     try:
@@ -112,6 +134,24 @@ def analyze(data: bytes) -> str:
             key=len, reverse=True)[:3]
         label = "; ".join(f'"{s}"' for s in residents) if residents else "(no strings)"
         lines.append(f"  page+0x{page:x}: {n:>4} refs  {label}")
+
+    refs = reverse_index(pairs)
+    interesting = interesting_strings(strings)
+    if interesting:
+        lines.append("")
+        lines.append("## string-anchored references")
+        lines.append("pages of interest that ADRP(+ADD) formation pairs target,")
+        lines.append("with the referencing code pages (page-level attribution: a")
+        lines.append("pair targets one address; residents of the same page are shown):")
+        by_page = collections.defaultdict(list)
+        for off, txt in interesting.items():
+            by_page[off // PAGE].append((off, txt))
+        for page in sorted(by_page, key=lambda p: -len(refs.get(p, [])))[:24]:
+            residents = ", ".join(f'"{t}"' for _, t in sorted(by_page[page]))[:90]
+            code_pages = sorted({pc for pc in refs.get(page, [])})
+            shown = "; ".join(f"+0x{pc:x}" for pc in code_pages[:6])
+            extra = f" (+{len(code_pages) - 6} more)" if len(code_pages) > 6 else ""
+            lines.append(f'  page+0x{page:x}: {len(refs.get(page, [])):>3} refs from {shown}{extra}  strings: [{residents}]')
 
     return "\n".join(lines)
 

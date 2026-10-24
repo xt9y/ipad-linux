@@ -158,7 +158,8 @@ USB serial-string values; never copy them into the repo or any report.
 - [x] Structured decode pass (Capstone, 84.2% coverage, PAC prologues found — see `docs/boot-image-recon-24a446.md`)
 - [x] Literal-pool address-constant scan (264 known-family constants: 171 peripheral/MMIO, 73 upper MMIO/PCIe, 20 page-aligned DRAM — incl. the `0x200000000` region base itself)
 - [x] Load-base-independent code-to-data xref (`tools/boot-image-xref.py`): 9220 ADRP(+ADD) refs → 688 data pages, top pages identified as SysConfig3/DER parsing machinery
-- [ ] Deep analysis: load-base resolution + literal-pointer resolution (18459 pool LDRs pending) → full handler-cluster enumeration
+- [x] String-anchored reverse mapping: `getenv`/`setenv`/`setenvnp` handler cluster (page 0x211), `boot-command`/`boot-args` boot-flow cluster (page 0x210), `com.apple.System.boot-nonce` registry plumbing (page 0x223), early-entry boot-property references
+- [ ] Deep analysis: load-base resolution + literal-pointer resolution (18459 pool LDRs pending) → dispatch-table semantics (256/255 entry tables at 0x1945a8/0x194da8)
 - [ ] Extended DFU fuzz campaign with per-session device approval
 
 ## DFU session 2 (2026-10-24 afternoon, fresh DFU entries)
