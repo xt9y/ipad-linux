@@ -406,6 +406,19 @@ Both consumer loops are now located and the full semantic chain closes:
 
 **Hypothesis (explicitly labeled, unconfirmed):** the twin 256/255-entry tables are the per-byte interpreter engines inside the iBoot LZFSE-family decoder — byte-driven kernel dispatch with PAC-signed branches, window copying, and error-return codes. Identifying which LZFSE block/field the byte stream belongs to, and the exact kernel set semantics, is future work; device-side confirmation is not available from the DFU surface.
 
+## embedded compressed payload (decoded)
+
+The data region contains a real LZFSE-compressed payload, located and decoded **statically**:
+
+- **Stream bounds**: first block magic `'bvx2'` at `0x1a3768` (4-byte aligned; the only aligned hit outside later blocks of the same stream), end-of-stream `'bvx$'` at `0x1dd487`. Three additional `'bvx2'` magics inside the span are later blocks of the same stream (this is why each individually failed to decode as a separate stream).
+- **Decoded with the public liblzfse reference decoder**: input `0x39d23` B → output **`0x79760` B** (497,504 bytes); the decoder consumed the stream up to exactly the `'bvx$'` marker. Decompressed SHA-256 prefix `7da684741cedf068` (unified image prefix `dc3cb25f29f25645` for cross-reference).
+- **Handler-verified structure of the output**: 67.7% non-zero; **0.84% `ret` word density across 0x1e5d8 words** with zero `pacibsp` words — a real (PAC-less, pre-PAC-style) ARM64 module; the dominant record stride is 8 bytes (78.3% of non-zero u32 blocks) with 16-byte nesting.
+- **Identity markers**: 1025 eight-byte records spelling **`rtkstack`-style markers as `"RTKSTACK"`** (low32 `0x534b5452 'RTKS'`, high32 `0x4b434154 'TACK'`), plus embedded file-path strings reconstructing to `platform/t8103/...` (e.g. `.../drivers/power/drv_therma...`). The payload head is `b +0x204` followed by zero-fill, and the branch target opens with `mrs x1, currentel; ubfx x1, x1, #2, #2; cmp x1, #3` — an EL3 validation guard.
+- **Persistent reading**: the payload is an **Apple rtkit-family coprocessor firmware image built for T8103-epoch platforms** (power/thermal driver paths, `RTKSTACK` section markers), embedded LZFSE-compressed inside iBoot's data region.
+- **Consumer chain (static, partial)**: 16 ADRP(+ADD) formation sites from very early code (`0xc6c4`, `0xc6f4`, `0xc718`, `0xc738`, `0xc75c`, `0xc77c`, ...) target the stream's own page `0x1a3` (i.e. addresses `0x1a3000..0x1a3fff`), so the image's earliest modules hold pointers into the compressed blob; combined with the decode engine identified in code earlier this session, the complete static loop is: **embedded compressed firmware ↔ in-image LZFSE-family engine with per-byte PAC-dispatch tables ↔ early-boot consumers holding the stream pointer**.
+
+What the payload does at runtime (which coprocessor it arms, exact module identity beyond the T8103-platform strings) remains open; the static evidence chain is complete.
+
 ## measured image layout (decode-density)
 
 `tools/boot-image-disasm.py` now emits a 16 KiB decode-density map (share of words decoding to non-`udf` instructions). Measured on the 24A446 image:
