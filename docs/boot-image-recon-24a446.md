@@ -314,8 +314,9 @@ From the pool/udf-span qword scan plus follow-up verification (all offsets image
 
 - Table A: 256 contiguous qword entries at `0x1945a8`–`0x194da0`, each `{low32, 0x8010b803}`. The low32 values resolve to exactly **11 distinct code offsets** (e.g. `0x140ca0`, `0x140cd4`, `0x140d08`, …) inside a 0x2c0-wide window.
 - Table B: 255 contiguous qword entries at `0x194da8`–`0x195598` directly adjacent, each `{low32, 0x801023ca}`, resolving to 11 distinct code offsets around `0x145adc`–`0x145b6c`.
+- **Byte→kernel partition measured (2026-10-24 round)**: both tables map onto an *identical* 11-handler partition. Table A: 120 ordinary bytes (≡0–5 mod 8 and the rest of the residual class) → `0x140ca0`; the 32-byte block `0xa0–0xbf` → `0x140cd4`; bytes ≡7 mod 8 (7, 15, …, 159) → `0x140d08`; `0xf1–0xff` → `0x140dec`; `0xf0` → `0x140e10`; `0xe1–0xef` → `0x140e38`; `0xe0` → `0x140e50`; bytes 14/22 → `0x140f04`; the ≡6 mod 8 bytes split range-dependently between `0x140f2c` (30–62 plus an extended set) and `0x140f34` (70–110, 134–158, 198–206); byte 6 alone → `0x140f60`. Table B repeats the same partition with kernels `0x145adc..0x145c1c` and its own PAC context. Explicit single-byte tokens at `0xe0`/`0xf0`, a 32-byte block above `0xa0`, and the ≡6/≡7 mod 8 sub-classes are consistent with a literal-run/match control-byte taxonomy of an LZ-family decoder; bit-exact public-format equivalence is not claimed.
 - Verify: bytes at the resolved targets decode as clean AArch64 bit-manipulation kernels (`lsr X, X, #6` / `add` / `cmp` / `b.hi` / `ubfx`) — the low32 halves are genuine image-relative code offsets, not coincidence.
-- Interpretation left open: 256/255-entry tables mapping byte-index-like values to 11 handlers each, with a constant per-table 32-bit cookie. A 256-entry byte-indexed dispatch shape is consistent with table-driven byte kernels; the exact semantics are unidentified and were not confirmed on-device. No load base was assumed or derived — the pool does not appear to store absolute pointers into the image.
+- Interpretation (updated): the 256/255-entry tables are byte-indexed dispatch into 11 handlers each (partition above). *Correcting the earlier "no absolute pointers in the pool" reading*: the pool's `hi32=1` qwords (16,470) **are** absolute pointers — base **`0x1FC000000`** — but they target only the SMC-domain RAM (image-relative `[0x1a5b50..0x28a640]`), never iBoot's own code/data; "load-base independent" remains true for iBoot-internal addressing (see the address-space section below).
 
 ## string-anchored references pass
 
@@ -406,6 +407,39 @@ Both consumer loops are now located and the full semantic chain closes:
 
 **Hypothesis (explicitly labeled, unconfirmed):** the twin 256/255-entry tables are the per-byte interpreter engines inside the iBoot LZFSE-family decoder — byte-driven kernel dispatch with PAC-signed branches, window copying, and error-return codes. Identifying which LZFSE block/field the byte stream belongs to, and the exact kernel set semantics, is future work; device-side confirmation is not available from the DFU surface.
 
+## address space & runtime layout (resolved 2026-10-24 round)
+
+The long-standing open questions — what the 18,459 literal-pool loads actually reference, why 54% of resolved formation targets fall beyond the file, and whether a per-segment VA↔file-offset model is needed — closed with a full value-class census of the pool region `0x15b000..0x196ff8` (30,719 qwords):
+
+| pool class (hi32 \| low32) | n | reading |
+|---|---|---|
+| `{1 \| low ∈ [0xFC000000..0xFD000000)}` | 16,029 | **SMC-domain pointers** — absolute pointers `0x1FC000000 + image-relative offset`, every target in `[0x1a5b50..0x28a640]`, never touching iBoot's own code/rodata |
+| `{1 \| small}` remainder | 441 | `{tag, count/size}` records |
+| `{tag \| small}`, hi32 ∈ {2:479, 6:238, 0x10000001:211, 0x80000001:151, 0x40000001:143, 0xb:129, 0x13:83, 3:69} | 1,503 | tagged small-value records (counters/ids/attrs), not pointers |
+| `{0x8010b803 \| kernel}` | 256 | dispatch table A (11 kernels `0x140ca0..0x140f60`) |
+| `{0x801023ca \| kernel}` | 255 | dispatch table B (11 kernels `0x145adc..0x145c1c`) |
+| `{0x80XX0000 \| low}` (top tags 0x8020×345, 0x8010×127, 0x8030×40, 0x8070×29, 0x8040×21, 0x80f0×15, …) | 1,220 | class-tagged pointer records; **94% of lows are offsets into iBoot's own code band** (`0x1316d8`, `0x1351d4`, `0x133cfc`, `0x157f6c`, …; remainder in the `0x151000..0x158000` service band) |
+| `{0 \| small}` | 7,521 | plain integers (7,415 below `0x10000`) |
+
+The `{0x80XX0000 \| offset}` records share the pointer shape of the dispatch entries (`{signed-pointer-tag, target}`); the per-class hi32 codes act as pre-signed-pointer context tags. Which key/material actually signs them at runtime is not derivable statically and is not asserted.
+
+### The SMC RAM map (built from the pointer family)
+
+The 16,029 domain pointers describe one contiguous region, image-relative **`[0x1a5bb8..0x28a640]`**, addressed at **SMC-VA base `0x1FC000000`**:
+
+- **Staging/service zone** `[0x1a5bb8..0x1f64a0)`: 10,405 pointers. The file stores the compressed SMC stream at part of this span (`0x1a3768..0x1dd48b`) — transient packaging bytes; at runtime the space holds staged objects. Measured structure: 607 consecutive 12-byte-strided record pointers at pool `[0x17fd60..0x181058)` (consecutive deltas `0xc` ×517) targeting `[0x1c74d0..0x1ca734]` inside the zone.
+- **Decoded SMC image** at **`≈0x1f64a0` (±0x180 anchor-match plateau) + `0x79760` B**: 645 pool pointers land **exactly on RTKSTACK guard-page starts** of the decoded payload and 13 land on payload string starts — content-verified against driver strings `drv_apc_simetra.cpp`, `ADC_GAIN/ADC_OFST: %04X, %04X, %04X`. The destination overlaps the file's `blob_post` band and extends `0x49000` B past the file end.
+- **Beyond-file tail** `[0x2269d8..0x28a640]`: 649 pointers — SMC heap/stack living in zero-fill beyond the delivered file; 171 further in-file pointers sit just below the zone base.
+- The **fixed shared base `0x1a5bb8` → SMC-VA `0x1FC1A5BB8`** repeats at a strict rhythm in every `0x194000..0x1945a8` descriptor group.
+
+### Reference anomalies closed
+
+- **Inside-stream / blob_post formations** (1,187 + 1,071 of the 9,220 resolved pairs) are **staged-region references**, not reads of compressed bytes: the file's content there is transient packaging, replaced at runtime by the staged zone above. The "16 early-code sites target the stream page" reading becomes "16 early-code sites target staged-zone addresses" (the fixed zone base sits `0x2450` into the file's stream span).
+- **Beyond-file formations** (4,995 refs, `0x2269d8..0x3975f0`) are BSS/runtime-object references — e.g. `pc 0x5a8: adrp x8, #0x23e000; add x8, x8, #0x5f0; ldr x8, [x8]` loads a global from beyond the file end. Intra-page offset concentrations `0x5f0` ×631 and `0xbb8` ×338 across hundreds of pages; source PCs concentrate in `0xc0000..0x130000` (303–528 per 64-KiB band). The runtime image therefore under-delivers ≈1.5 MB of zero-fill/BSS relative to the 2,255,320-B file.
+- A per-segment VA↔file-offset (δ-shift) model was fitted and **rejected**: string-zone hit counts form a plateau without a spike (≤193/1187); the uniform load model plus a zero-fill tail explains every population.
+- iBoot's own addressing stays **load-base independent** (adrp-relative, plain-integer pool constants) — the one absolute base inside the image is `0x1FC000000` (SMC-domain). Consistently, the decoded SMC firmware itself contains **zero** base-coded pointers: it links position-independently, and the base is applied by this image's descriptor constants, not by SMC-side relocations.
+- The `0x194000..0x1945a8` descriptor table reads in these terms: `{fourcc+version}` section words (`'MgrC'` v0x0401, `'MitC'` v0x0100, `'aehC'` v0x0100), task rows as 4-tuples of `{class-tag \| iBoot-fn-offset}` (2–3 entries sharing one hi32 class, then a class switch), the fixed `0x1FC1A5BB8` base, and length/id small-ints — the SMC↔iBoot section/task wiring.
+
 ## embedded compressed payload (decoded)
 
 The data region contains a real LZFSE-compressed payload, located and decoded **statically**:
@@ -416,9 +450,9 @@ The data region contains a real LZFSE-compressed payload, located and decoded **
 - **Identity markers**: 1025 eight-byte records spelling **`rtkstack`-style markers as `"RTKSTACK"`** (low32 `0x534b5452 'RTKS'`, high32 `0x4b434154 'TACK'`), plus embedded file-path strings reconstructing to `platform/t8103/...` (e.g. `.../drivers/power/drv_therma...`). The payload head is `b +0x204` followed by zero-fill, and the branch target opens with `mrs x1, currentel; ubfx x1, x1, #2, #2; cmp x1, #3` — an EL3 validation guard.
 - **Persistent reading**: the payload is an **Apple coprocessor firmware image built for the `ipad13b` platform group**, embedded LZFSE-compressed inside iBoot's data region.
 - **Identity — confirmed by embedded strings**: the payload self-identifies as **`AppleSMCFirmware_H13-7372.2.11.ipad13b.REL`** (at +0x6b878) on top of **`RTKit_release-3514.0.15.release`** (at +0x52dbc). Source-path strings confirm the SMC role: charger (`drivers/charger/v1/potomac/drv_potomac_charger.cpp`), battery management (`smc/bms/v1/batterySocFilter/batterySocFilter.cpp`, `charge_control.cpp`), thermal (`smc/thermal/componentController/basebandCC.cpp`), power/PMU (`drivers/power/drv_pmu_interface.cpp`, `drv_pmu_events.cpp`, `drv_apc_sera.cpp`, `drv_apc_simetra.cpp`), and T8103 platform shim files (`platform/t8103/device_{gpio,pmgr,spmi,watchdog,dockchannel,iop_ans,forcewakeup}.cpp`, `platform/common/platform_{power,mem}.cpp`). The 4096-byte-aligned `RTKSTACK` guard runs (`x1025`) are RTKit stack guard pages. `ipad13b` matches the same platform tag as the J407 `kernelcache.release.ipad13b` in the restore manifest.
-- **Consumer chain (static, partial)**: 16 ADRP(+ADD) formation sites from very early code (`0xc6c4`, `0xc6f4`, `0xc718`, `0xc738`, `0xc75c`, `0xc77c`, ...) target the stream's own page `0x1a3` (i.e. addresses `0x1a3000..0x1a3fff`), so the image's earliest modules hold pointers into the compressed blob; combined with the decode engine identified in code earlier this session, the complete static loop is: **embedded compressed firmware ↔ in-image LZFSE-family engine with per-byte PAC-dispatch tables ↔ early-boot consumers holding the stream pointer**.
+- **Consumer chain (resolved)**: the early-code formation sites that appeared to point into the compressed blob (`0xc6c4`, `0xc6f4`, `0xc718`, `0xc738`, `0xc75c`, `0xc77c`, … targeting page `0x1a3`) are **staged-region references** — in the runtime layout that file area is SMC staging/service RAM (see the address-space section above), so no static reference reads compressed bytes. The measured chain is: **embedded compressed firmware (transient file content) → in-image LZFSE-family engine (twin PAC-dispatch tables, 11 kernels each) decodes to image-relative `≈0x1f64a0` → iBoot's pool carries the SMC's runtime object map (16k domain pointers at base `0x1FC000000`: staging records, RTKSTACK guard pages, the image itself, and a beyond-file heap)**.
 
-What the payload does at runtime: it is the **SMC (System Management Controller) firmware** — `AppleSMCFirmware_H13-7372.2.11.ipad13b.REL` on `RTKit_release-3514.0.15.release`, managing charger/BMS/thermal/PMU/SPMI — embedded compressed and decoded by the in-image engine. The remaining open item is exact runtime wiring (which early function performs the decompress call and where the result buffer is handed to the SMC coprocessor bring-up).
+What the payload does at runtime: it is the **SMC (System Management Controller) firmware** — `AppleSMCFirmware_H13-7372.2.11.ipad13b.REL` on `RTKit_release-3514.0.15.release`, managing charger/BMS/thermal/PMU/SPMI — embedded compressed and decoded by the in-image engine into image-relative `≈0x1f64a0` (SMC-VA `0x1FC1F64A0`). Remaining open items: which early function issues the decompress call, and the mailbox semantics of the shared `0x1FC1A5BB8` base in the descriptor groups.
 
 ## measured image layout (decode-density)
 
