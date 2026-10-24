@@ -16,6 +16,8 @@ on:
       - 'tests/j407_firmware_test.py'
       - 'tests/j407_firmware_diff_test.py'
       - 'tests/z2fw_test.py'
+      - 'tests/dfu_fuzz_test.py'
+      - 'tests/boot_image_recon_test.py'
       - 'tests/adt_function_test.c'
       - 'tests/adt_clock_test.c'
       - 'src/adt/**'
@@ -34,6 +36,8 @@ on:
       - 'tests/j407_firmware_test.py'
       - 'tests/j407_firmware_diff_test.py'
       - 'tests/z2fw_test.py'
+      - 'tests/dfu_fuzz_test.py'
+      - 'tests/boot_image_recon_test.py'
       - 'tests/adt_function_test.c'
       - 'tests/adt_clock_test.c'
       - 'src/adt/**'
@@ -90,6 +94,12 @@ jobs:
 
       - name: Test m1n1 payload scanner simulation
         run: python3 -m unittest -v tests/pack_m1n1_scan_test.py
+
+      - name: Test DFU read-side fuzz/harness vectors
+        run: python3 -m unittest -v tests/dfu_fuzz_test.py
+
+      - name: Test boot image recon tool
+        run: python3 -m unittest -v tests/boot_image_recon_test.py
 
       - name: Test Z2FW touchscreen validator
         run: python3 -m unittest -v tests/z2fw_test.py
