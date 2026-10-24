@@ -51,8 +51,8 @@ MIRROR = {
     "UPLOAD": {"outcome": "TIMEOUT", "note": "2 s timeout; no DFU error latch (steady state)"},
     "GETSTATUS(wrong-interface)": {"outcome": "ENOENT", "note": "immediate Errno 2; not a timeout"},
     "GETSTATE(wrong-interface)": {"outcome": "ENOENT", "note": "immediate Errno 2; not a timeout"},
-    "ABORT": {"outcome": "I/O-ERROR", "note": "detaches within 250 ms; re-enumerates as 05ac:12ab composite personality"},
-    "CLRSTATUS": {"outcome": "I/O-ERROR", "note": "same detach/flip behavior as ABORT"},
+    "ABORT": {"outcome": "I/O-ERROR", "note": "detaches within 250 ms; re-enumerates as 05ac:12ab composite personality (n=2)"},
+    "CLRSTATUS": {"outcome": "I/O-ERROR", "note": "detaches <250 ms; 05ac:12ab ~15 s later (n=3, deterministic)"},
     "ABORT(again)": {"outcome": "NO-LIVE-RECORD", "note": "post-flip stale handle; only meaningful on a fresh DFU link"},
 }
 

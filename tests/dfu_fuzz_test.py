@@ -26,8 +26,8 @@ class DfuFuzzOfflineTest(unittest.TestCase):
         self.assertIn("UPLOAD(16),0x02,0,0,TIMEOUT,2 s timeout; no DFU error latch (steady state)", result.stdout)
         self.assertIn("GETSTATUS(wrong-interface),0x03,0,1,ENOENT,immediate Errno 2; not a timeout", result.stdout)
         self.assertIn("GETSTATE(wrong-interface),0x05,0,1,ENOENT,immediate Errno 2; not a timeout", result.stdout)
-        self.assertIn("ABORT,0x06,0,0,I/O-ERROR,detaches within 250 ms; re-enumerates as 05ac:12ab composite personality", result.stdout)
-        self.assertIn("CLRSTATUS,0x04,0,0,I/O-ERROR,same detach/flip behavior as ABORT", result.stdout)
+        self.assertIn("ABORT,0x06,0,0,I/O-ERROR,detaches within 250 ms; re-enumerates as 05ac:12ab composite personality (n=2)", result.stdout)
+        self.assertIn("CLRSTATUS,0x04,0,0,I/O-ERROR,detaches <250 ms; 05ac:12ab ~15 s later (n=3, deterministic)", result.stdout)
         # every vector in the set is recorded; nothing stays UNRECORDED
         self.assertNotIn("UNRECORDED", result.stdout)
         self.assertIn("offline pass complete", result.stdout)

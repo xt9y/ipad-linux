@@ -167,3 +167,11 @@ Repeatable causality established on fresh DFU entries (device re-entered by user
 - **Interpretation (bounded)**: on this BootROM DFU build, host-to-device class requests trigger a ROM USB-stack teardown from which the device boots onward into the normal OS. Whether that is a deliberate reset handler or a crash path is indistinguishable from the host side; both are consistent with the data. DFU idle is therefore only stable under IN-only traffic.
 - Good practice recorded for future sessions: run all IN-side probes first; treat ABORT/CLRSTATUS as the terminal step of any session; after an OUT request, do not reuse the old handle (the device re-appears under a different PID and needs re-entry via the physical buttons).
 - Session logs archived locally (`dfu-fuzz-run.log`, `phaseA-reads.log`, `phaseB-clrstatus.log`).
+
+### Control follow-up (same afternoon, third fresh DFU entry)
+
+An 8-minute idle control window (`15:03:39`–`15:11:40`, zero transfers sent, pure enumeration watch) showed **no flip: `1227` stayed present the entire time**. The flip therefore is not an idle timeout within this window; the un-provoked drop observed once earlier this afternoon had not reproduced under zero-traffic conditions (host-side actors such as `irecovery`/`usbmuxd` remain environmental variables; if `irecovery` participates in a session, treat that as a possible confounder).
+
+A single CLRSTATUS after the control window reproduced the flip deterministically (now **n=3 across three independently entered DFU states**): I/O error on the request, detachment in the same second, `05ac:12ab` 15 s later — composite normal-OS personality (PTP/audio/HID/NCM/vendor interfaces, no DFU class surface). Unlike the first two flips, this `12ab` window was observed for over two minutes *while untouched* (descriptor reads only) — the earlier rapid disappearances correlated with issuing control transfers at its interfaces, not with the personality itself.
+
+Un-bounded statement of the operational rule that follows from this: on this BootROM build, **ABORT and CLRSTATUS terminate the DFU link** (device boots onward into the normal OS). DFU longevity requires IN-only traffic. The generic-DFU assumption "ABORT is always harmless" is not valid here.
