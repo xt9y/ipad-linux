@@ -384,3 +384,14 @@ pair targets one address; residents of the same page are shown):
   page+0x197:  17 refs from +0xb24; +0xb58; +0xcac; +0xdec; +0xe98; +0xf4c (+11 more)  strings: ["recovery-boot-mode", "boot-breadcrumbs", "boot-ramdisk", "boot-path", "boot-device", "boo]
   page+0x215:  16 refs from +0x7d1a0; +0x7d8cc; +0x7da5c; +0x7ea70; +0x889c8; +0xbc114 (+10 more)  strings: ["fsboot-safe", "dart-dcp", "dart-disp0", "dart-disp0", "dart-dcpext", "dart-dispext0", "da]
   page+0x0:   1 refs from +0x1c  strings: ["mBoot-20457.2.37"]```
+
+## dispatch-table semantics (structural characterization)
+
+Follow-up on the two pool tables at `0x1945a8` / `0x194da8` — now end-to-end confirmed as indexed dispatch structures:
+
+- **Ten accessor code sites** materialize addresses directly onto specific table entries (formation targets `0x194b78→A#186`, `0x194bb8→A#194`, `0x194be8→A#200`, `0x194d88→A#252`, `0x195190→B#125`, `0x195200→B#139`, `0x195218→B#142` (5 sites), `0x195378→B#186`); most sites are accessors whose next instruction is `ret` or a branch into a helper (`b #0x136cf8`, `b #0x3b704`) — they hand out pointers to entries. Others form pointers to neighboring flat structures on the same pages.
+- **Every sampled entry contains a kernel target**: the low32 of each accessor-listed entry equals one of the 11 kernel code offsets of its table (verified both tables). So the full chain `code → accessor → entry[byte_idx] → {low32 = image-relative kernel offset, constant cookie}` is statically verified. The accessors never form addresses into the tables from the kernel clusters themselves (0 formation refs from regions 0x50/0x51) — consumers and kernels are separate.
+- **The two tables are parallel twins**: the byte-index → kernel partition is identical in structure across A and B — same class sizes and index ranges (120 / 32 `[160..191]` contig / 20 / 15 `[241..254|255]` contig / 1 `[240]` / 15 `[225..239]` contig / 1 `[224]` / 2 / 37 / 12 / 1 `[6]`), each table dispatching into its own 11-kernel cluster (`0x140ca0..0x140f60` and `0x145adc..0x145c1c`).
+- **Class-zone texture**: boundaries at `0xA0`-`0xBF`, `0xE0`, `0xE1`-`0xEF`, `0xF0`, `0xF1`-`0xFF`, singletons at `0x06` — Latin-range style character-class partitions. The kernels are compact bit-arithmetic routines (`lsr x?, x?, #6`, `ubfx ..,#3,#3`, `add #2`/`#3`, `cmp`, `b.hi`) consistent with small decoders/classifiers.
+
+**Hypothesis (explicitly labeled, unconfirmed):** a 256-entry byte-to-class dispatch whose zones cut at Latin1/UTF-8-ish boundaries is consistent with a byte-stream decoder (e.g. a UTF-8/IDN-style state machine); the twin table could be a second variant of the same classification. The cookie meaning, the consumer loop, and the byte-stream decoder identity were NOT confirmed; device-side confirmation is not available from the DFU surface.

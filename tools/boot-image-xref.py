@@ -106,6 +106,17 @@ def reverse_index(pairs) -> dict[int, list[int]]:
     return refs
 
 
+REGIONS = 0x4000  # 16 KiB code windows for the region usage map
+
+
+def region_usage(pairs):
+    """code region -> Counter of referenced data pages."""
+    usage = collections.defaultdict(collections.Counter)
+    for target, pc in pairs:
+        usage[pc // REGIONS][target // PAGE] += 1
+    return usage
+
+
 def analyze(data: bytes) -> str:
     lines: list[str] = []
     try:
@@ -152,6 +163,25 @@ def analyze(data: bytes) -> str:
             shown = "; ".join(f"+0x{pc:x}" for pc in code_pages[:6])
             extra = f" (+{len(code_pages) - 6} more)" if len(code_pages) > 6 else ""
             lines.append(f'  page+0x{page:x}: {len(refs.get(page, [])):>3} refs from {shown}{extra}  strings: [{residents}]')
+
+    usage = region_usage(pairs)
+    if usage:
+        lines.append("")
+        lines.append("## code-region data-usage map")
+        lines.append(f"16 KiB code windows -> their most-referenced data pages")
+        pages_of_interest = {p for p in interesting}
+        for region in sorted(usage)[:16]:
+            top = usage[region].most_common(3)
+            parts = []
+            for page, n in top:
+                anchor = ""
+                if page in pages_of_interest:
+                    resident = sorted(t for _, t in interesting.items()
+                                      if _ // PAGE == page)[:1]
+                    if resident:
+                        anchor = f'("{";".join(resident)[:28]}")'
+                parts.append(f"0x{page:x}:{n}{anchor}")
+            lines.append(f"  code+0x{region * REGIONS:x}: {', '.join(parts)}")
 
     return "\n".join(lines)
 

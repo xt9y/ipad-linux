@@ -57,6 +57,13 @@ class BootImageXrefTest(unittest.TestCase):
         self.assertIn("page+0x15:   1 refs", report)
         self.assertIn("from +0x0", report)
 
+    def test_code_region_usage_map(self):
+        report = boot_image_xref.analyze(self.synthetic_image())
+        self.assertIn("## code-region data-usage map", report)
+        # the referencing pc 0x0 lives in code region 0, referencing
+        # target page 0x15
+        self.assertIn("code+0x0: 0x15:1", report)
+
     def test_cli_writes_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "image.bin"
