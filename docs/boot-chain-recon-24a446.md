@@ -23,9 +23,12 @@ All four "stages" carry the same embedded build tag: `mBoot-20457.2.37`
 (`BUILD_TAG: %s` string present), which **matches the boot chain
 actually observed running on the physical device on 2026-10-22**
 (`FirmwareVersion mBoot-20457.2.37`, verified via `ideviceinfo` while the
-device ran iPadOS 27.0 beta 7 / `24A5424a`). The GA `24A446` inspection
-therefore describes the bootloader generation the device is factually
-running.
+device ran iPadOS 27.0 beta 7 / `24A5424a`) and **re-verified on-screen
+after the device was updated to the signed GA on 2026-10-24** (device now
+runs `27.0.1 / 24A446`, same observed `mBoot-20457.2.37`). The GA
+`24A446` inspection therefore describes the bootloader generation the
+device is factually running, and the device environment is pinned to the
+build documented here (automatic updates off; beta profile removed).
 
 ## Finding: unified multi-personality bootloader image
 

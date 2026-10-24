@@ -58,6 +58,19 @@ That is neither the GA 27.0 (`24A437`) nor the currently signed 27.0.1 (`24A446`
 - the previously observed `mBoot-18000.120.36` recovery/boot chain is now outdated for this specific device; any further offline boot-chain inspection needs a J407 identity from a `24A5424a` manifest (the `23F77` section below remains valid purely as the historical record it was);
 - the easily-recognized research constraint stands: being on a beta seed narrows future restores relative to the public signed build `27.0.1 (24A446)`, but nothing about this adds a boot-entry primitive.
 
+**Resolution (2026-10-24, later the same day): the beta state was ended.** The device was updated off the beta seed onto the signed GA and re-verified first-hand over USB:
+
+```
+ProductType       iPad13,16
+ProductVersion    27.0.1
+BuildVersion      24A446          <- the signed GA build analyzed offline
+Boot chain        mBoot-20457.2.37 (same version as the 24A446 payloads; SHA-256
+                  prefix dc3cb25f29f25645 of the unified image)
+CPUArchitecture   arm64e
+```
+
+The beta profile was removed, automatic update installs were switched off, and the environment is now pinned: the on-device boot chain versions against the artifacts documented in `docs/boot-chain-recon-24a446.md` (digest prefixes and class facts only; raw payloads stay in the local-only archive). The BootROM itself is unmodified hardware — `iBoot-5540.0.0.400.2` (SRTG) was already recorded first-hand in DFU and no iPadOS update can change it.
+
 ### Physical USB and Recovery validation
 
 The real device was connected to an AArch64 Fedora Asahi Linux host with a normal USB-C data cable.
