@@ -513,19 +513,23 @@ The early-flow call chain `0x37440` passes a static data object to `0xb5834` and
 - `0xb5c28` calls `0xb695c` at `0xb5c48`. That stub is `mov x19,x3; mov x20,x2; mov x21,x1; mov x22,x0; ret`; it therefore sets `x22 = 0x215ed8`, `x21 = 0x215ed8`, `x20 = 0x215f40`, `x19 = 0x160950`. The guard `x21 <= x22 < x20` passes with `x22` exactly at the start of the static object. **The object identity is resolved statically**; what remains is runtime reachability of `0x37440` and the staging of the input pointer at `+0x00`.
 - `0xb5c28` copies `[x22+0x00..0x18]` into the caller descriptor, takes `w23 = [x22+0x48]` as the input length and `w24 = [x22+0x54]` as the type, clears/resets secondary fields `+0x28/+0x30/+0x38`, and uses `+0x40/+0x62`. It calls `0xb58c0` (site `0xb5d40`) with descriptor `+0x20 = 0x39d30` and `+0x24 = 0x8a1`; `0xb58c0` passes type `0x8a1` to `0x1473f0`, whose tail branch enters `0x144d5c`.
 
+**Call-site wiring into `0xb58c0` (static; resolved 2026-10-26 round).** With type `w24 ≠ 0`, `0xb5c28` clears/pokes the secondary object fields (`+0x30` zeroed if nonzero, the word at `*+0x28` ANDed with `~3`, `+0x38` zeroed if nonzero), then builds the local descriptor at `sp+0x48` — `+0x00/+0x08` = `0x1FC1EF768`, `+0x10/+0x18` = object `+0x10/+0x18`, `+0x20 = 0x39D30` (length), `+0x24 = 0x8A1` (type) — and calls the container validator `0xb5b68` as `(x0 = 0x1FC1EF768, x1 = 0x1FC1EF768, x2 = 0x1FC229498, x4 = 0x39d30)` (`x3` is unset at this site and keeps the incoming `0x160950`). A failed validator result or `type == 0` branches to the fallback at `0xb5d48`. On success it computes `end = 0x1FC1EF768 + 0x39D30 = 0x1FC229498` — object `+0x10` exactly — and `input = container + 0x18 = 0x1FC1EF780`, pushes the runtime container words read at `0x1FC1EF778/0x1FC1EF77C` (container `+0x10/+0x14`: the `+0x10` word feeds the early prepare call inside `0xb58c0`, the `+0x14` word is the input word-index — 0 in emulation), the interface markers `0x222ad8`/`0x222d40`, and `{input, end}` as stack args, then calls `0xb58c0` with `x0..x3` = the four pointers of global `0x235b48` (the endpoint block filled during `0xb5834` via `0xb6948`/`0x1253ac`), `x4/x5` = the descriptor copy, `x6` = descriptor copy `+0x28`. The two words the loader consumes at `container+0x10/+0x14` come from the **container header**, not from the static object — the object's `+0x10` is the independent end-pointer field above — and this matches `0xb5b68`'s checks (`splt` magic at container `+0x00`, fields at `+0x10/+0x14`, hash via `0xb690c`/`0xc098c`).
+
+Inside `0xb58c0` the picture is symmetric: descriptor type → `0x147348` (per-type object) plus the early prepare pair `0x13822c`/`0x1381d8`; decode input computed as `[descriptor+0x00] + 0x18 + 4·(index word)`, i.e. `0x1FC1EF780` for index 0; decode entry `0x1473f0` called as `(x2 = input, w3 = 0x39D30, w5 = 0x8A1)` with tail branch into `0x144d5c`; a 4-aligned success result is then installed through `0xcf5a0` with seven arguments, several fed from virtual calls dispatched via `0xb6814`/`0x136cf8` on interface object `0x222ad8` (dispatch tables at `+0xa0/+0xb0`) and the `0x235b48` channel pair. Who stages the stream bytes and container-header words into SMC VA space upstream of `0xb5c28` remains open statically.
+
 The object at `0x215ed8` is therefore the descriptor `b5c28` consumes, with this field map:
 
 | offset | value | reading |
 |---|---|---|
-| `+0x00` | `0x1FC1EF768` | input pointer (runtime SMC VA; file offset `0x1EF768` currently holds a pointer table, so this is a staged/remapped address if it is the stream input) |
+| `+0x00` | `0x1FC1EF768` | container pointer (runtime SMC VA; the decode input actually consumed starts at `+0x18` = `0x1FC1EF780`, so the container carries an 0x18-byte header followed by the staged stream — see the call-site wiring below) |
 | `+0x08` | `0x1FC1EF768` | duplicate input pointer |
-| `+0x10` | `0x1FC229498` | second runtime pointer (beyond delivered file) |
-| `+0x18` | `0x1FC1A5BB8` | shared SMC base |
-| `+0x20` | `0x23FE00000` | tagged pointer, not consumed by `b5c28` |
+| `+0x10` | `0x1FC229498` | **input end pointer**: `+0x00 + length` exactly (`0x1FC1EF768 + 0x39D30`), computed and self-consistent at `0xb5d00` |
+| `+0x18` | `0x1FC1A5BB8` | third runtime pointer; forwarded into `0xb58c0` as arg3, not consumed on the traced `0x8a1` path before the decode call (the register gets reused for the decode return) |
+| `+0x20` | `0x23FE00000` | tagged pointer (not consumed by `b5c28`); registration adds `+0x50` to it and registers the range via `0xb68c0` from `0xb5834` |
 | `+0x28` | `0x23D2B800C` | secondary state pointer; `b5c28` clears the low two flag bits at `*+0x28` |
 | `+0x48` | `0x39D30` | input length, 13 bytes more than the exact `bvx$`-bounded stream length `0x39D23` (16-byte padding) |
 | `+0x4c` | `0x55000` | secondary size, not consumed by `b5c28` |
-| `+0x50` | `0x100000` | 1 MiB size field, not consumed by `b5c28` (likely output allocation; exact consumer not traced) |
+| `+0x50` | `0x100000` | 1 MiB span consumed by registration (`0xb5834` at `0xb5860..0xb5874`): `x9 = [x0+0x20] + w9` then `bl 0xb68c0` with marker `0x222b78`; not consumed by `b5c28` |
 | `+0x54` | `0x8A1` | compression/protocol type |
 | `+0x60` | `0xF6` | u16 scalar read by the `b68c0` metadata builder; `+0x62` is the bit index used by `b5c28` (zero here) |
 
