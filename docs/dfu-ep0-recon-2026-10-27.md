@@ -181,9 +181,6 @@ Acceptance chain raw `0x11cd18..0x11ce40` (context: DFU ep0 OUT data stage finis
   Hopper-"orphan"-shaped but are all reachable via `bl` (arg shuffle thunks —
   e.g. `0x7f094` = "move x0..x3 → x4..x7", `0x7f088` = load `0x159bb8`,
   `0x7f02c` = compare against `*0x23e5f0` context pointer).
-- The `0x11cf30` gateway (`b 0x93e9c` / `b 0x93f60`) and `0x11cf34`/`svc #0xc5`
-  wipe loop (`0x11cf84`) from the earlier Phase C notes were re-confirmed:
-
 ### 2.7 Scrub/wipe loop (new structural note)
 
 Raw `0x11cf84` = chunked wipe over `param_1` (buffer) with `x4` bytes, stepping
@@ -192,6 +189,26 @@ Raw `0x11cf84` = chunked wipe over `param_1` (buffer) with `x4` bytes, stepping
 accumulated wipe count. `0x159bb8` holds a record template (`b9 5b 1a fc 01 00 00 00,
 68 c0 25 fc 01 00 00 00, 01 …`): tagged 0x1fc-prefixed record-pointers chain (the
 same template shape as the descriptor records passed to `0xd2c84`/`0xd2ed0`).
+
+### 2.8 The `0x11d018` cluster — DFU-core session init semantics (2026-10-28)
+
+- `0x11db00` = flags-getter thunk: `x19 = *0x20c868` (global DFU-core ctx),
+  `w8 = *(x19+1)`; `0x11db10..` = arg-materializer thunks for the descriptor
+  calls (`x27+0x98/0xc0` with `&0x188ee8`).
+- `0x11d018` (entry step): if the ctx+1 flag is clear, resolves descriptor
+  `0x188ee8` via `0xd6590(ctx+0x98, ctx+0x98, ctx+0xc0, &0x188ee8, 0)` — a
+  resolver consumer beyond `0xd2c84`/`0xd2ed0` — then gates on `0x100d14(4)`;
+  on success issues `svc #0x50` with `w2 = 0xb`, stores the halfword result at
+  `ctx+4`, sets `ctx+1 = 1`, returns 0; gate failure → `0x11daec` cleanup +
+  `0x3039c(0x1a5)` panic.
+- `0x11d0d0` (session init step): when `(*0x20c868)+1 == 1`, allocates two
+  0x200-byte blocks (`0x870cc(3)` + `0x11daac`), zero-fills each via
+  `0xd2ed0(…,0x200)`, stores into `ctx+0x18..0x48`; then loads the DFU-core
+  descriptor cards at `ctx+0x140..0x270` — templates `0x203f80`, `0x203f92`,
+  `0x160bb0`, `0x189108`, `0x225d10`, `0x15b538`, `0x159be8` — and paciza-signed
+  function pointers for `0x11d29c`, `0x11d320`, `0x11d41c` stored at
+  `ctx+0x210/0x260/0x250`: the DFU-core session object's own step-function
+  table.
 
 ## 3. Candidate list status (crypto/DFU side)
 
@@ -217,8 +234,14 @@ same template shape as the descriptor records passed to `0xd2c84`/`0xd2ed0`).
   driver-B's distance ledger keeps `dist ≤ produced` upstream, and the copy
   loop is bounded by `w1` regardless. Candidate closed as unreachable-on-real-
   input hardening gap.
-  (Container entry `0x144a0c`/selector `0x891` probe early-outs with 0 engine
-  calls — a known harness quirk of that entry, not a C1 data point.)
+  Configuration-independence addendum: the padded configuration (`STREAM_LEN`
+  `0x39d30` = +0xD padding, selector `0x891`, same entry `0x144d5c`) engages the
+  identical engine behavior — output `0x79760` B, sha `7da684741cedf068`
+  (byte-exact expected SMC image, `match=True`), 39,597 calls / 346,415 guard
+  evaluations / 0 backward / 0 above-limit — so the C1 result holds for every
+  configuration that reaches the engine (selector lane does not alter it on
+  this stream; only the container entry `0x144a0c` early-outs with 0 engine
+  calls, which is not a C1 data point).
 - **C2 (lower-confidence, per prior session)** — unchanged; not re-verified this
   session. See `docs/boot-image-recon-24a446.md` for the original *cv*; its status
   stays per that document until the dedicated re-run.
@@ -334,10 +357,12 @@ through validated readers with panics; zero new attacker candidates.**
   8fa94, 8ee48, 8ed90, 8ed58, 8f030, 8f01c, 8f39c, 8f044, 8f520, 8f6b8, 8f8fc,
   e3740, e399c, e3cd0` + `207c8, 20994, 8205c, 81ca0, 220a4, 20e0c, 2030c,
   23ce4, 72be0, 715a4, 23d4c, 23d18, 30378` + `d2de8, d2e5c, 145c3c, 145d30`.
-- `emu_c1.py` / `emu_c1_891.py` + `emu_c1.log` / `emu_c1_891.log` (LOCAL ONLY,
-  never committed): instrumented C1 telemetry harness clones — per-call arg
-  sampling, guard-phase `src/base/limit` classification, 64 KiB distance
-  histogram, ok/fail/eq-edge tallies. Log = the C1 emulation proof of record.
+- `emu_c1.py` / `emu_c1_891.py` / `emu_c1_padded.py` + `emu_c1.log` /
+  `emu_c1_891.log` / `emu_c1_padded.log` (LOCAL ONLY, never committed):
+  instrumented C1 telemetry harness clones — per-call arg sampling, guard-phase
+  `src/base/limit` classification, 64 KiB distance histogram, ok/fail/eq-edge
+  tallies. `emu_c1.log` + `emu_c1_padded.log` = the C1 emulation proofs of
+  record (identical statistics, two streamlength/selector configurations).
 - `disasm_0x11cb00_11d100.txt` — re-dumped from the cached capstone list, fills
   the 0x11cb00–0x11cf00 gap from the previous session's stdout-only slice.
 - `scripts/DecompileAt.java` — Ghidra headless script used for all extracts.
@@ -389,12 +414,12 @@ read.
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
    the user first.**
 2. Optional static leftovers (all low priority, none gate any candidate):
-   - padded `0x891` probe for C1 coverage on the second stream
-     (`emu_8a1_padded.py` lineage; the plain container entry early-outs).
-   - walk the `0xd2c84` resolver for the full slot↔handler map (§6).
-   - extend the `0x11d018` cluster step functions (`0x11d070/0x11d0d0/0x11db00`)
-     and the `0x37188` boot-object manager note ("what NEW info from the
-     `0x11cd18` acceptance chain changes").
+   - ~~padded `0x891` probe~~ — DONE (see C1 addendum in §3): identical
+     engine statistics and byte-exact expected output.
+   - ~~`0x11d018` cluster extension~~ — DONE (§2.8); the `0x37188`
+     boot-object manager note ("what NEW info the `0x11cd18` acceptance chain
+     changes") remains open.
+   - walk the `0xd2c84`/`0xd6590` resolver for the full slot↔handler map (§6).
 3. C2 stays unchanged (lower confidence; prior doc governs).
 4. Housekeeping: `make test` green before every commit; TSVs and DFU fuzz
    session logs stay untracked; wrapper artifacts and `pc4/` cache never
