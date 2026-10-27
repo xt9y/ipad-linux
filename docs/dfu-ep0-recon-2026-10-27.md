@@ -1,5 +1,9 @@
 # J407 DFU ep0 recon — candidates-only static audit (2026-10-27)
 
+> **Status 2026-10-28 (overnight continuation): C1/C3/C4 closed, Phase B audit
+> complete, svc census + gate templates recorded (§3–§6). The main remaining
+> work is device-side and requires the iPad.**
+
 Session continuation of `research/j407-entry-2026-10` at `c24d202`. **No device was
 connected and none was used; every statement below is from static analysis of
 `~/research/j407-bootchain/raw_iBoot.j407.RELEASE` (sha256 `dc3cb25f29f25645…`,
@@ -140,23 +144,36 @@ Acceptance chain raw `0x11cd18..0x11ce40` (context: DFU ep0 OUT data stage finis
   0xc4070, 0xe28d4, 0xef0bc, 0xef9c8, 0x118658` — a shared boot-arg/DFU-style
   helper, not DFU-specific.
 
-### 2.5 Raw `0x8c3ac` — the alt (non-secure-monitor) writer arm (resolves next-move #2, part 2)
+### 2.5 Raw `0x8c3ac` — the alt (non-secure-monitor) writer arm — CLOSED (structural, 2026-10-28 night re-read)
 
-- Own `pacibsp` function (real entry `0x8c3ac`; NOT a fragment). Takes 4 args to
-  x24–x27 plus the caller's x19 (`0x11cda4` path keeps caller's x19).
-- Ghidra decompiles it, but the body is a huge multi-call shell
-  (`0x8f24c/0x8f008/0xe3740/0x8f030/0xe399c/0x8f01c/0x8f828/0x8f6a4/0x8f8fc/0x8ed90/
-   0x8f044/0x8f6b8/0xe3cd0/0x8ed58/CallSupervisor(0xc2)/0x8f6b8/0x8f520/0x8ee48/…`),
-  with `svc #0xc2` inside (`0x8c368..0x8c36c` in the neighbouring same-shape
-  function) — the arm family's own `CallSupervisor` usage. Reads
-  `*(x20 + 0x20)` (`ldrb w0,[x20,#0x20]` @`0x8c37c`) for the conditional branch
-  (`0x8ee48` result bit) — success sets the flag store `0x8fa94` path, failure
-  goes to `0x30444` (the VM mapper / non-returning path).
-- **Status**: structurally audited but NOT candidate-level resolved. Deliberately
-  not decompiled into narrative here. Captured decompile in `pc4/8c3ac.c`
-  (1479 chars) with the caveat that Ghidra lost some `unaff_x20/x30` provenance;
-  treat `pc4/8c3ac.c` as *indicative*, instruction disasm of `0x8c2e0..0x8c420`
-  remains the evidence of record.
+- Full extent `0x8c3ac..0x8c494` (`retab` at `0x8c494`, next `pacibsp` at
+  `0x8c49c`) — only **0xEB bytes**; the earlier "huge multi-call shell" reading
+  came from listing its callees, not its body. Real disasm is the evidence;
+  `pc4/8c3ac.c` still indicative.
+- Structure: stack-staged continuation trampoline. Spills 4 args to x24–x27,
+  zero-inits a 0x28-byte object at `sp+0x28` (`x28`), materialises call args via
+  the `0x8fxxx` micro-thunk cluster (x3/x19-style argument shims — see C5),
+  loads `*0x23e5f0` (`0x8f24c`) and saves it at `sp+0x58`, then calls the real
+  workers `0xe3740` / `0xe399c` (×2) / `0xe3cd0`.
+- Mid-body `svc #0xc2` with `w3 = 0x26` at `0x8c464` (family-0xc2 command 0x26).
+- Tail: `ldrb w0,[x20,#0x20]` + `bl 0x8ee48` = flags-only compare of a saved
+  value against `*0x23e5f0`. Mismatch → `bl 0x30444` (non-returning panic).
+  Match → tail-call the shared epilogue trampoline `0x8fa94` with `x1 = LR`
+  (the continuation address), then `retab`. `0x8fa94` confirms as pure
+  callee-save restore of the `0x8fac4`-framed neighbour (ldp x19..x28; add sp).
+- **All stores inside `0x8c3ac` go to its own frame** (`sp+0x00..0x58`); no
+  global/heap stores at this layer.
+- Worker `0xe3740` (read fully): region-claim — bulk-inits 0x4000 bytes from
+  template `0x159bd0` via `0xd2ed0(dst,dst,dst+0x4000,&0x159bd0,0,0x4000)`,
+  then writes a 0x28-byte descriptor card
+  `{base, base, base+0x4000, &0x159bd0, 0, 0}` into the slot `[x20,x19)`.
+  Panics on zero/misalign/OOB-slot: `0x3039c(0x90)`, `0x3039c(0x97)`,
+  `0x13a40c`.
+- **Flagged observation**: the alt arm is entered from `0x11cdac` (`cbz x0`
+  after `svc #0xc5`) and *skips* the `0x119160` append-grant check entirely —
+  that check only ran on the `x0 != 0` arm (`0x11cdb0..0x11cdbc`). On J407 the
+  secure monitor is present, so the alt arm is dead-by-environment. Recorded as
+  an environment-conditional hardening note, **not** an attacker-reachable path.
 
 ### 2.6 Service-patch table artifacts (context, hardening observation only)
 
@@ -178,64 +195,207 @@ same template shape as the descriptor records passed to `0xd2c84`/`0xd2ed0`).
 
 ## 3. Candidate list status (crypto/DFU side)
 
-- **C1 (LZFSE match-copy `source ≥ base` — raw `0x145d80`)** — **DOWNGRADED**.
-  The previously reported *missing* bound check is present in the raw disasm at
-  `0x145de0..0x145df4` (`cmp x10, x11; ccmp w9, w8, #2, eq; b.hs 0x145e24 → mov
-  w8,#1` → `-1` via `sbfx` at `0x145e3c`). Consistent with the call-site at
-  `0x1459d8` (`bl 0x145d80(x0 = helper ctx, w1 = n bytes, x2 = ptr)`; failure
-  returns bit `0x1f` → branch `0x144e0c`). The earlier "missing" was an artifact
-  of the REA/Hopper `procedure_pseudo_code` view only; with the Hopper pipeline
-  retired, no REA-era claim stands without capstone or Ghidra crosscheck.
-  **Remaining work** (next session): emulation spot-check *is still worth doing* to
-  prove the wrap/fail path terminates (use the existing `emu_*.py` harness in the
-  cache dir with the same mapping layout — no code needs to be invented).
+- **C1 (LZFSE match-copy backward-OOB, raw `0x145d80`) — FINAL: latent-only,
+  guard holds on genuine input.** The guard pair at `0x145de0..0x145df0` is
+  *upper-bound-only* (`cmp x10,x11` against the cursor = `[hx+0x10]`;
+  `ccmp w9,w8,#2,eq; b.hs 0x145e24`): there is **no `x10 >= [hx]` floor**, so an
+  `x11 − (w22+x12)` underflow would land the source below the window base.
+  Exactly two call sites confirmed: `0x1459d8` (`x0=x23+0x18`, `w1=w24+w8`,
+  `x2=x19`) and `0x145be8` (`x0=x19+0x18`, `x1=x22`, `x2=x20`, preceded by the
+  `0x145c3c` packer flush).
+  Emulation proof (night session, instrumented `emu_c1.py` = local-only clone
+  of the proven harness with per-call/per-guard telemetry): genuine SMC stream,
+  entry `0x144d5c`, selector `0x8a1` — **39,597 calls, 346,415 guard
+  evaluations, ZERO `src < base` events, ZERO `src > limit` events, 0 guard
+  failures, ok = 39,586 (+11 no-loop early returns), output byte-exact matches
+  the expected SMC image (exit 0)**. The `src − base` histogram spans 0..~0x1C0000
+  in 64 KiB buckets (an LZ back-reference window into the already-decoded
+  prefix); the 55,944 equality hits are the `src == cursor` lane that reads the
+  packer accumulator (`x10` switched to `hx+0x18` on that edge).
+  Classification stays honest: **"truncated-pointer wrap check missing"** — the
+  wrap needs layout conditions not reachable from attacker-controlled bytes;
+  driver-B's distance ledger keeps `dist ≤ produced` upstream, and the copy
+  loop is bounded by `w1` regardless. Candidate closed as unreachable-on-real-
+  input hardening gap.
+  (Container entry `0x144a0c`/selector `0x891` probe early-outs with 0 engine
+  calls — a known harness quirk of that entry, not a C1 data point.)
 - **C2 (lower-confidence, per prior session)** — unchanged; not re-verified this
   session. See `docs/boot-image-recon-24a446.md` for the original *cv*; its status
-  stays per that document until the dedicated dedicated re-run.
-- **C3 (THIS session, static)** — *DFU ep0 RAM-append strictness.* In the audited
-  build the ep0 DFU data-stage write path is **default-rejecting**:
-  the write-grant window `0x230e00/0x230e08` is preset to an empty interval and the
-  bypass bit is not observed to be set anywhere. Both pre-checked invariants
-  (`block_len` match and `cum+received ≤ expected`) live at `0x11cd34`/`0x11cd4c`,
-  before any destination pointer is dereferenced. Structural candidates still open:
-  (a) find *any* code path that flips the bypass bit 16 byte `0x230df2`;
-  (b) confirm there is no second writer of `0x230e00/0x230e08` (census: none found).
-- **C4 (THIS session, structural)** — *alt arm writer `0x8c3ac`*. Called only when
-  `svc #0xc5` gate returns `x0 == 0`; un-nested, stack-heavy, multi-`svc` body;
-  Ghidra decompile is indicative only (`pc4/8c3ac.c`) — needs its own dedicated
-  read before any claim beyond "structure, not yet audited content".
-- **C5 (THIS session, structural)** — *thunk/stub families pretending to be
-  procedures.* Tiny arg-shuffle stubs (`0x11c668`, `0x7f02c..0x7f104`, `0x7f094`,
-  `0x7f088`, `0x5ec/0x604 …`) are real reachable code that HA/Hopper-style orphans
-  mis-cut into false "procedure starts". Any future cross-ref pass must treat
-  these as in-body branches, not as procedure entries.
+  stays per that document until the dedicated re-run.
+- **C3 (DFU ep0 RAM-append strictness) — FINAL: default-rejecting; no image-side
+  writer of the bypass bit exists.** Full bit-level census of feature word
+  `0x230df0` and window `0x230e00/0x230e08`:
+  - init `*0x230df0 = 0x222c0000` (bits 29/25/21/19/18 — **no bit16**), written
+    at `0x7e1b8` in the boot feature-probe function (pacibsp `0x7e17c`, called
+    from `0x39b4/0x287e0/0x7dfc8`).
+  - all other writers are constant ORRs (bits 28 / 5+20 / 27 / 26 via
+    `0x7e1d8/0x7e1f4/0x7e1fc`; upper-half orrs `0x8400000000` @`0x7e738` and
+    `0x20000000000` @`0x7e83c`, both through the `0x7f0dc` setter =
+    `str x8,[x9,#0xdf0]`) — none touches bit16.
+  - the masked writer at `0x7e5ec..0x7e608` (`(v & 0xDFF3FFDF) | 0x20`)
+    *preserves* bit16 (sets bit5, clears bits 29/19/18).
+  - **new call-graph edge (Phase B tie-in)**: the IMG4 parse fn `0x20e0c` calls
+    `FUN_0007e5ec()` plus `0x7e984/0x7e66c/0x7e42c/0x7e6f8/0x7e458` — the
+    feature word is mutated (bit5 set) as a side effect of an IMG4 decode, but
+    no reachable path ever sets bit16 (whole-file qword scan).
+  - three mini-setter hosts `0x7e464/0x7e71c/0x7e828` (`orr x8,x9,#const` then
+    `bl 0x7f0dc`) have **no direct `b`/`bl` callers and no file records point
+    at them** (§6) — presumed unreachable/dead in this build.
+  - the grant window `0x230e00/0x230e08` is preset empty (`0x7e268`:
+    `mov x9,#-1; stp x9,xzr,[x8]`); no second writer found.
+  Conclusion: DFU RAM-append is default-rejecting in this build; the bypass
+  byte `0x230df2` (bit16) has no image-side writer. Candidate closed with the
+  presumed-dead mini-setters documented as the only theoretical residual.
+- **C4 (alt arm writer `0x8c3ac`) — FINAL: structurally closed** (§2.5).
+  0xEB-byte stack-staged continuation trampoline; all stores to its own frame;
+  workers panic-guarded (`0xe3740` region-claim); `svc #0xc2` w3=0x26;
+  `0x8ee48` context-compare gates the continuation tail-call. Flagged
+  observation: alt arm skips the `0x119160` grant check, but is
+  dead-by-environment on J407 (secure monitor present). No attacker-reachable
+  claim.
+- **C5 (THIS session, structural) — FINAL** — *thunk/stub families pretending to
+  be procedures.* Tiny arg-shuffle stubs (`0x11c668`, `0x7f02c..0x7f104`,
+  `0x7f094`, `0x7f088`, `0x5ec/0x604 …`) are real reachable code that
+  HA/Hopper-style orphans mis-cut into false "procedure starts". Any future
+  cross-ref pass must treat these as in-body branches, not as procedure entries.
+  Night-session extension: the whole `0x8f008..0x8fac4` C4-helper cluster is the
+  same species — `0x8f24c` = load `*0x23e5f0`, `0x8ee48` = cmp flags only,
+  `0x8f828/0x8ed90` = const-string loads, `0x8f6a4` = `x3=x19`-style arg shim,
+  `0x8fa94` = shared callee-save epilogue. Ghidra decompiles several as `return;`
+  yet they carry live register semantics — only disasm is authoritative for this
+  cluster.
 
-## 4. Phase B audit (IMG4 pipeline / Memz headers) — NOT started this session
+## 4. Phase B audit (IMG4 pipeline / Memz headers) — COMPLETE (2026-10-28 night session)
 
-Deliberately deferred to keep the diff to this turn small and focused. Keep pointer
-from the handoff §7: doc `0x20994` `IMG4 pipeline` and `0x820c4` `Memz type headers`
-remain the named targets; they are auto-analyzed in the new Ghidra project already,
-so the next session should start there (Ghidra addressing = raw offsets, no +0xB8).
+All six cluster functions plus the measure layer were decompiled (`pc4/*.c`) and
+read end-to-end. Verdict: **defensive by construction; every length trust flows
+through validated readers with panics; zero new attacker candidates.**
+
+- `0x207c8` — bulk IMG4-card linked-list builder: ≤32 items per call
+  (`0x20` cap); per-item span must be `0x1e` via `0x72be0` (twice) + `0x715a4`
+  (`== 0x1e`) + measure `0x2030c(...,0x1e,…)`; card tag `img4` (`0x696d6734`)
+  @+0x70, size @+0x74, links +0x20..+0x38; object writes bounded by the
+  `0x23ce4` span check; list insert with triple-bounded cursor globals
+  `0x2153a0..b0` / `0x2153c0..d0`; "linked list item %p corrupted" boot panic
+  (`0x30378` + `s_…_0019954b`). Returns item count; any broken invariant →
+  `0x30444`.
+- `0x20994` — single-item linked-list append: same card layout, same 32-entry
+  cap, same triple-bounded cursors and corrupted-panic, same `0x1e` measure
+  gate (`0x715a4`/`0x72be0`).
+- `0x2030c` — THE length-trust root, validated measure of a 0x1e-span header:
+  requires `param_5 ≥ 0x1e` and `param_3 − derived == param_5`; two
+  `0x2000000000000010` header compares (+ `0x16` sub-span + 4-byte tail
+  check `local_78[3]==4`); secure 4-byte copy via `0xd2c84` + transform
+  `0xcf50c`; bounded out-stores `*param_6` / `*param_10`; panics `0x13a40c` /
+  `0x30444` on any mismatch. Callers compute nothing themselves.
+- `0x72be0` — bounded slot read with `x21 ≤ x19 < x20` panics, returns
+  `*(x19+0x20)`; `0x715a4` — svc `#0x62` measure with `param_14`-typed
+  dispatch (1/2/3 → `0x115518/0x115a9c/0x1156e8`), else `0x3039c(0x195)`
+  panic.
+- `0x8205c` — "Memz" ctor (`0x4d656d7a` @+0x08): slot-region bounds
+  `x20 ≤ x19 < x21` else `0x13a40c`; size computed by `0x2030c`, stored @+0x04;
+  alloc id @+0x00; failure path releases the log context explicitly.
+- `0x81ca0` — DFU flush consumer: tag-dispatch Memz/img4 → `FUN_00020e0c()`;
+  error codes `0xcf/0xd5/0xdb/0xe1`, log codes `0x3000c/0x3000d/0x4003000x`.
+- `0x220a4` — id-getter consumer: tag dispatch, `0x2030c` validate,
+  `== *(obj+0x10)` compare; error codes `0x4004001d..22`.
+- `0x20e0c` — the deep IMG4/boot-file parse (32 args), full read:
+  - **validity check is fail-closed**: item requires validity
+    (`(*0x227ef0)(tag) != 0`) with `*(code**)(param_31+0xf30) == NULL` → boot
+    panic with `s_image4_callbacks_validity_cb_is_N_001993ff`
+    ("image4_callbacks.validity_cb is NULL", non-returning `0x30378`). Success
+    further *requires* the validity callback to have run (flag byte
+    `*(param_32+0x1dd) == 1`, else final `0x30444` panic). This resolves the
+    earlier "validity_cb" side-thread: fail-closed, not exploitable.
+  - every error path logs a distinct `0x4004xxxx` code
+    (`0x4004000a..0x40040057`, plus `0xd9a/0x4b0/0x382/0x40040204`), zeroizes
+    the local flag words, and the final exit **scrubs the whole parse
+    workspace** via `0xd2ed0(param_14…, 0, param_18)` zero-fill.
+  - **decoder tie-in (Phase B ↔ Phase C/C1)**: the packed-payload path arms the
+    LZ engine with `FUN_00147348(0x891)` and decodes via
+    `FUN_001473f0(param_14, …, 0x891)`, both behind overflow-guarded extent
+    checks (`CARRY8` chains) against `param_18`; reservations `0x2000` (type 0)
+    / `0xa400` (type 1, else `0x40040025`). Same engine whose C1 guard was
+    proven to hold on genuine streams.
+  - crypto payload path: `0x2000000000000010`-header shell parsed via
+    `0x13633c/0x136424/0x1363f8/0x136238`; key sizes restricted to
+    0x80/0x100/0xc0 bits (else `0x4004000e`), mapped to flags
+    `0 / 0x20000000 / 0x10000000`; key material copied via `0xd2c84` bounded
+    slices; operations via `0x80fd4(0x11, …)` ×2 + post-transform `0xcf528`;
+    16-byte alignment enforced (`uVar16 & 0xf` → `0xd9a`).
+  - calls `FUN_0007e5ec()` (C3 masked feature-word writer) — bit5-set side
+    effect on this path; bit16 untouched.
 
 ## 5. Evidence inventory (this session)
 
-- `pc4/*.c` — 8 Ghidra functions: `119160.c, 8c3ac.c, 11c294.c, d2c84.c, d2ed0.c,
-  11cf84.c, 11d018.c, 7e60c.c` (cache dir, not committed).
+- `pc4/*.c` — Ghidra decompiles (cache dir, not committed). Session 1 (Phase C):
+  `119160.c, 8c3ac.c, 11c294.c, d2c84.c, d2ed0.c, 11cf84.c, 11d018.c, 7e60c.c`.
+  Night session (C4 helpers + Phase B): `8fac4, 8f24c, 8f008, 8f828, 8f6a4,
+  8fa94, 8ee48, 8ed90, 8ed58, 8f030, 8f01c, 8f39c, 8f044, 8f520, 8f6b8, 8f8fc,
+  e3740, e399c, e3cd0` + `207c8, 20994, 8205c, 81ca0, 220a4, 20e0c, 2030c,
+  23ce4, 72be0, 715a4, 23d4c, 23d18, 30378` + `d2de8, d2e5c, 145c3c, 145d30`.
+- `emu_c1.py` / `emu_c1_891.py` + `emu_c1.log` / `emu_c1_891.log` (LOCAL ONLY,
+  never committed): instrumented C1 telemetry harness clones — per-call arg
+  sampling, guard-phase `src/base/limit` classification, 64 KiB distance
+  histogram, ok/fail/eq-edge tallies. Log = the C1 emulation proof of record.
 - `disasm_0x11cb00_11d100.txt` — re-dumped from the cached capstone list, fills
   the 0x11cb00–0x11cf00 gap from the previous session's stdout-only slice.
 - `scripts/DecompileAt.java` — Ghidra headless script used for all extracts.
 - `insns.pkl` — unchanged capstone census (474,556 insns), remains the
   instruction-level evidence of record.
 
-## 6. Next session plan
+### 5.1 svc instruction census (completed night session)
 
-1. Restore & run the emulator for the **C1 wrap/fail** proof (existing harness,
-   mapping unchanged, no new code).
-2. Phase B: audit doc `0x20994` (IMG4 pipeline) + `0x820c4` (Memz type headers),
-   now in Ghidra terms.
-3. C3 follow-up: re-run the 0x230df0/0x230e00 writer census with a bit-level
-   taint of the whole feature word (the micro-thunk prologue interleaving means a
-   fully manual read is possible but slow).
-4. C4: disasm/`DecompileAt.java` the real `0x8c3ac` (full body) and either close it
-   or properly document it as a candidate.
-5. Rename the +0xB8 note to "legacy" everywhere; new docs record raw == Ghidra.
+373 real `svc #imm` sites across the image (disasm-resync census against
+`insns.pkl`); top families: `0xc2` ×134, `0xc5` ×73, `0x62` ×24, `0x38` ×10,
+`0x50` ×10, `0x71` ×8, remainder single-digit families. Three census hits
+(`0xb03c`, `0xcfb0`, `0xd07e`) sit in the data region above the code bounds and
+are recorded as false positives — they are data words, not code. Family usage
+corroborates Phase C: `0xc5` = config/bulk service (state init, wipe loop), 
+`0xc2` = per-command work service (e.g. command `0x26` inside `0x8c3ac`),
+`0x62` = the measure service consumed by the Phase B measure layer.
+
+## 6. Gate slots (patch table) — enumerated level recorded (2026-10-28)
+
+The four descriptor templates are dumped (raw offsets; whole-file qword scan at
+4-byte step). **No record anywhere in the file points at
+`0x7e464/0x7e71c/0x7e828/0x7dff4/0x7f0dc/0x7e60c/0x11c668/0x11db00`** — the
+slots resolve to other handlers, which also closes the C3 mini-setter
+reachability question.
+
+- Record shape per template: header pair `{0xfc1dxxxx, 0xfc26xxxx}` (code-page
+  + BSS-object pointer), then `{len, count, flags}`, then per-slot records
+  `{handler-tag 0xfc1axxxx, slot-index, mode-flag}`.
+- `0x188b70` (96 B) — the ep0 write-gate descriptor: header
+  `{0xfc1d4b71, 0xfc26e0a0}`, `{0x120, 0x8b, 0}`, four per-slot records
+  `{0xfc1a7538, 0x10/0x20/0x30/0x40, 0x10000010}` (slot indices 0x10..0x40).
+- `0x188728` (96 B): header `{0xfc1d4729, 0xfc26e088}`; records
+  `{0x1a5b50,0x40,0xb}`, `{0x1d4751, …}`, `{0x26c718, 0xd0,0x13,0x10000080}`,
+  `{0x1a6930, 0x20, 0x10000080}`, `0xfc1a5b50`.
+- `0x188ea0` (72 B): header `{0xfc1d4ea1, 0xfc26ef60}`; records
+  `{0x1a5bb8, 0x20, 1}`, `{0x1a6218, 0x60, 0x10000002}`, `{0x1a7538, …}`,
+  `0xfc1d4ee9`.
+- `0x188ee8` (64 B): header `{0xfc1d4ee9, 0xfc26cbb8}`; records
+  `{0x1ac3f8, 0x28, 0xb}` and `{0xfc1d4f11, 0xfc26cbcc, 0x60, 0xb}`.
+- `0x159bb8` (svc-c5 wipe template, §2.7): `{0xfc1a5bb9, 0xfc25c068, 1, …}`.
+
+Full slot↔handler resolution requires walking the `0xd2c84` resolver over the
+`0xfc1axxxx` handler-tag pages — future work, low priority now that the C4 alt
+arm is structurally closed and the grant check itself (`0x119160`) is already
+read.
+
+## 7. Next session plan (updated 2026-10-28)
+
+1. **Device-side work needs the iPad. Do nothing on-device without alerting
+   the user first.**
+2. Optional static leftovers (all low priority, none gate any candidate):
+   - padded `0x891` probe for C1 coverage on the second stream
+     (`emu_8a1_padded.py` lineage; the plain container entry early-outs).
+   - walk the `0xd2c84` resolver for the full slot↔handler map (§6).
+   - extend the `0x11d018` cluster step functions (`0x11d070/0x11d0d0/0x11db00`)
+     and the `0x37188` boot-object manager note ("what NEW info from the
+     `0x11cd18` acceptance chain changes").
+3. C2 stays unchanged (lower confidence; prior doc governs).
+4. Housekeeping: `make test` green before every commit; TSVs and DFU fuzz
+   session logs stay untracked; wrapper artifacts and `pc4/` cache never
+   committed.
