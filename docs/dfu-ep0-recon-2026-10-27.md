@@ -418,24 +418,33 @@ individually approved via question). Raw logs stay LOCAL ONLY:
 contains byte values, errnos, digest prefixes only — no ECID/serial data).
 Commit here: class-level facts only.
 
-### 7.1 Personality map (finalizes the earlier "DFU" reading)
+### 7.1 Personality map (corrected same session — 12AB is NORMAL iOS)
 
-- `05ac:1227` = **SecureROM (BootROM) DFU** — NOT the audited iBoot code.
+- `05ac:1227` = **SecureROM (BootROM) DFU** and NOT the audited iBoot code.
   Everything recorded against 1227 describes ROM-side code; architectural
   cousins of the audited chain at best. Do not attribute 1227 observations to
   the iBoot image without iBoot-runtime evidence.
+
 - `05ac:12ab` composite (product string "iPad", 5 configurations,
-  `SupportsIPhoneOS` = Yes, bcdDevice-class stable) = **iBoot recovery** —
-  the audited image's runtime personality. This era's USB serial string
-  carries no `k:v` token pairs (CPID/BDID not extractable from it).
-- Should not be attributed either way without runtime-corroboration: the
-  `0x11c***`/`0x23b9a8` acceptance chain lives in the audited iBoot image,
-  but the 12ab recovery runtime did **not** service DFU-class ep0 requests
-  (7.4), so the audited chain's **live** behavior remains unobserved.
-- Consequence for users of libirecovery/pymobiledevice3: recovery pid range
-  in both `irecv.Mode` tables (and libirecovery.h) is 0x1280..0x1283 only —
-  0x12ab is unmatched, so `irecovery -q` fails structurally ("Unable to
-  connect"), independent of macOS claim/permission issues.
+  `SupportsIPhoneOS` = Yes) = **NORMAL iOS MODE**, not recovery. VALIDATED in
+  the same session after the correction: Apple's usbmuxd lists the device and
+  a lockdown `QueryType` over the mux answers
+  `Type = com.apple.mobile.lockdown` — recovery iBSS/iBoot cannot run
+  lockdownd, so this is ordinary iPadOS enumeration. Earlier text in this
+  session (and the 2026-10-24 mirror notes) had labeled 12ab as "recovery":
+  mislabel corrected retroactively; keep table-level artifacts (cfg census,
+  errnos) anyway — they now describe NORMAL-mode runtime and remain
+  class-level facts.
+
+- Consequence: the `0x11c***`/`0x23b9a8` acceptance chain lives in the audited
+  iBoot image, whose USB console actually lives on the yet-unseen RECOVERY
+  personality (expected pid family 0x1280..0x1283, the range libirecovery/
+  pmd3 DO match). Tonight's 12ab tests therefore say "normal iOS mode does
+  not service DFU-class ep0" — expected behavior, not a chain boundary.
+
+- The `irecovery`/`pymobiledevice3` structural note stands as written for
+  12ab (not a recovery pid — normal-mode devices are driven through usbmuxd,
+  where it appeared), and additionally: both tools DO match 0x1227 as DFU.
 
 ### 7.2 SecureROM DFU observations (05ac:1227)
 
@@ -462,34 +471,35 @@ Commit here: class-level facts only.
 - 05ac:12ab composite enumerated at t≈24.2 s (~15 s was seen after CLRSTATUS
   in prior sessions — same order of magnitude).
 
-### 7.4 Recovery composite boundary facts (05ac:12ab)
+### 7.4 12ab boundary facts (NORMAL iOS runtime — first-read 'recovery' label superseded)
 
 - Interface census (class-level): cfg1 = PTP only; cfg2 = audio + HID;
   cfg3 = PTP + itf1 `0xff` (bulk 0x02/0x83); cfg4 = PTP + two `0xff`
   interfaces (itf2 = multi-alt classic console geometry); cfg5 = full
   composite (PTP + `0xff` + CDC-ACM ×2 + NCM-style data). macOS auto-selects
   cfg5 on enumeration.
-- Kernel claims are per-config and re-attach within ~3 s after each config
+- Kernel claims are per-config (normal iOS composites attach NCM/PTP drivers) and re-attach within ~3 s after each config
   switch (claim race): cfg3/cfg4 itf1 are claimable immediately;
   cfg5 itf1 stays Errno-13 (kernel driver holds it; not releasable without
   sudo, no passwordless sudo on this host, no `/dev/tty.usbmodem*` exposed).
-- Class-DFU ep0 on the recovery personality: GETSTATUS/GETSTATE at
+- Class-DFU ep0 on the 12ab (normal-iOS) runtime: GETSTATUS/GETSTATE at
   wIndex=0 → **timeout (Errno 60), not stall**; wIndex=1 → host-side claim
-  rejection (Errno 13). Bounded interpretation: this runtime configuration
-  does not externally service DFU-class requests — consistent with the C3
-  default-empty write-grant window posture; live validation of the audited
-  chain needs a DFU-family runtime, not the recovery console composite.
+  rejection (Errno 13). INTERPRETATION (corrected): NORMAL iOS does not service DFU-class ep0
+  requests — expected, since the audited iBoot code is not what runs in
+  normal mode. The chain's live validation still needs a DFU-family runtime:
+  ROM DFU (done, ROM-side results only) or the yet-unreached recovery
+  personality.
 - ep0 vendor surface attempts (pmd3/irecovery shapes included): all
   `0x40/0` command-text forms STALL (Errno 32); `0x41/0` opener (pmd3
   recovery-upload init) times out; `0xC0/0` returns a byte-stable 6-byte
-  blob (semantics unknown; value recorded in the local TSV only). Console
-  text written to bulk 0x02 (cfg3, claim held) was accepted, then the
-  console service stopped accepting writes (subsequent writes timeout).
-  ep0 itself stays healthy throughout (standard descriptor reads OK at
-  every stage: manufacturer/product strings readable, config switchable).
+  blob (semantics unknown; value stays in the local TSV) — re-read as
+  NORMAL-iOS ep0 vendor stub behavior, not console traffic. All `0x40`-text
+  and bulk-console experiments on 12ab are WITHDRAWN as recovery-console
+  probes; ep0 stayed healthy throughout
 - Tooling state: pymobiledevice3 11.45.1 installed to user site (pip); its
-  irecv clone shares the same pid limitation, but its doctor/usbmux
-  plumbing may matter for future host-side routes.
+  irecv clone matches 0x1227 DFU but no normal-iOS pids (by design:
+  normal mode routes through usbmuxd, not direct irecovery); its
+  doctor/usbmux plumbing may matter for future host-side routes.
 
 ### 7.5 Where the acceptance-chain validation stands
 
@@ -499,8 +509,10 @@ Commit here: class-level facts only.
 - Live corroboration options, in increasing cost:
   1. SecureROM runtime arc (exists today; but it validates the ROM's own
      state machine, not the audited iBoot chain);
-  2. recovery console (needs either the 12ab-era protocol understood or a
-     privileged host — sudo/Linux kills the claim barrier);
+  2. recovery personality (unseen; likely 0x1280..0x1283 pid family, which
+     irecovery/pmd3 match natively). User asks at the button-dance level:
+     from normal iOS — VOLUME-UP, VOLUME-DOWN, then hold TOP until the
+     recovery picture appears. Rebooting out = TOP held ~10 s.
   3. loader-stage personality via a controlled restore-prefix flow
      (heaviest; requires explicit user approval in a planned session).
 
@@ -508,11 +520,16 @@ Commit here: class-level facts only.
 
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
    the user first.**
-2. Recovery-console access (7.5-2): prefer a privileged host (sudo/Linux) to
-   clear the cfg5-itf1 claim; on any route, first device arc = read-only
-   `getenv build-style` / `getenv version` (runtime identity), only then
-   decide whether the audited acceptance chain is exercisable from the
-   personality set reachable that way.
+2. **Recovery personality arc (the unlock; device in NORMAL iOS since the
+   12ab correction).** Ask the user: "IPAD REQUIRED IN RECOVERY" (from normal
+   iOS: VOLUME-UP, VOLUME-DOWN, then hold TOP until the recovery picture
+   appears). Expected 0x1280..0x1283 pid family (irecovery/pmd3-native).
+   Arc order: (a) personality census (product/pid/cfgs); (b) read-only
+   `getenv build-style` / `getenv version` — confirms the audited build;
+   (c) class-DFU GETSTATUS/GETSTATE — tests whether the recovery composite
+   services the audited ep0 chain; (d) only on positive (c) the DNLOAD arc
+   per the static model (mismatch-shaped probes are fail-safe: checks
+   precede any dereference).
 3. Optional static leftovers (all low priority, none gate any candidate):
    - ~~padded `0x891` probe~~ — DONE (see C1 addendum in §3): identical
      engine statistics and byte-exact expected output.
