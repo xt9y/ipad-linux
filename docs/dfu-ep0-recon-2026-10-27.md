@@ -516,6 +516,36 @@ Commit here: class-level facts only.
   3. loader-stage personality via a controlled restore-prefix flow
      (heaviest; requires explicit user approval in a planned session).
 
+### 7.6 Recovery-personality plan-of-record (protocol shapes + static corroboration)
+
+Classical recovery shapes, transcribed from the on-disk libirecovery/pmd3
+sources for validation at device time (never trusted blind):
+
+- Config dance: `set_configuration(1)` (classic recovery composite), interface
+  0 alt-setting 0; for mode value > RECOVERY_MODE_2 add
+  `set_interface_altsetting(1, 1)`. Composite geometry on USB-C iPads may
+  shift interface numbers (12ab showed cfg4-itf2 multi-alt) — enumerate, do
+  not assume.
+- Console command: ctrl `0x40`, bRequest 0, wValue 0, wIndex 0, payload =
+  `command + "\0"`. Response: ctrl `0xC0` read (255 B). Text-only commands
+  are the identity arc: `getenv build-style`, `getenv version`.
+- Image upload session: ctrl `0x41/0` as the initiator; data via BULK OUT
+  (pmd3 hard-codes endpoint 0x04 for Lightning-era interfaces) with a
+  terminating ZLP at a 512-byte boundary.
+- DFU-mode runtime machinery per pmd3: GETSTATUS `0xA1/3` body
+  `{bStatus, poll24, bState, iString}`; DNLOAD `0x21/1` with
+  wValue=packet_index; final chunk extended by `dfu_xbuf` =
+  `{ff ff ff ff ac 05 00 01 55 46 44 10}` + crc32(all data, salted); then
+  USB reset.
+
+Static corroboration (strings scan of the audited image, local file —
+class-level facts): recovery console command nouns `bootx`, `dev`, `getenv`,
+`reboot`, `root`, `saveenv`, `setenv`, `usb` all present in-image; identity
+banner `iBoot for j407 Copyright 2007-2026, Apple Inc.`; `RELEASE` and
+BUILDSTYLE vocabulary present. The console dispatch really is the audited
+code. At device time, `getenv version` is expected to answer in the banner
+or an `iBoot-<build>` family — record the exact string it returns.
+
 ## 8. Next session plan (updated 2026-10-28)
 
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
