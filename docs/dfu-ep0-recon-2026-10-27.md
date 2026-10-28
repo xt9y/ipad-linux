@@ -356,6 +356,82 @@ decode chain end `0xdcc84` → `0xddb10` (`VMiBoot `/`LZFSE`) is entered via
 `0xdc808`, which has **no static callers** (pointer-registered, matching the
 image's registration style) — the one remaining dynamic entry in this thread.
 
+### 2.12 Open Q4 — VLC internals + the `0x891` message mode, pinned statically (2026-10-28)
+
+This closes the last optional static leftover (handoff open question 4). All
+facts below are static decodes of `raw_iBoot.j407.RELEASE` (Ghidra addresses ==
+raw offsets; VA = `0x1fc04c000` + offset).
+
+**The VLC frequency-table decoder (site `0x1471d8`, inside the container
+driver `0x145e44`) is now instruction-level pinned.** Entry is by fallthrough
+from the header parse (`0x1464a8: cmp w9, #0x20; b.ne 0x1471d8` — no call):
+when the header's total length field ≠ 0x20, a VLC bitstream follows the
+0x20-byte fixed header and is decoded as follows:
+
+- Bit accumulator `w10`, bit position `w12`: bytes are OR-refilled from the
+  cursor (`x26`, limit `x8`) while the accumulator holds < 24 bits (refill
+  stops one byte past 17 — the fragment's two exit conditions cover cursor-at-
+  limit and no-room).
+- 5-bit tag = `acc & 0x1f`; **type byte = tag-table `[img+0x207d88][tag]`**;
+  the type byte *is* the bits-consumed count. Two static tables (32 B each),
+  both recovered:
+  - tag→type (`0x207d88`, period 16): `2 3 2 5 2 3 2 8 2 3 2 5 2 3 2 14`
+  - tag→signed value (`0x207da8`, period 32):
+    `0 2 1 4 0 3 1 −1  0 2 1 5 0 3 1 −1  0 2 1 6 0 3 1 −1  0 2 1 7 0 3 1 −1`
+    (the `−1` entries sit exactly on the two extended-form tags — don't-care).
+- Value forms: type `0xe` → value = `bits[4..13]` (10-bit field) + 0x18
+  (range 24..1047, consumes 14 bits); type `8` → value = `bits[4..7]` (4-bit
+  field) + 8 (range 8..23, consumes 8 bits); otherwise → the signed-table
+  value (0..7, consumes 2/3/5 bits). Small values get short codes, the exact
+  Apple LZFSE freq-VLC discipline.
+- 360 (`0x168`) 16-bit entries stored via `strh`; bits-underflow → error `-3`.
+  Stream/fragment valid when residual bits ≥ 7 **or** the cursor sits exactly
+  at the region limit; success branches to `0x14685c`.
+
+**Entry budget and validation (`0x14685c`).** The 360 entries are consumed as
+four contiguous groups — 20 (`x25`), 20 (`x22`), 64 (`[sp+0x80]`), 256
+(`x23`) — each NEON-summed (`ushll`/`uaddw`/`addp`) with FSE state-space
+bounds: group sums ≤ 64, 64, 256, 1024 respectively. Header field limits:
+field1 ≤ the type word `[x19+0x1c88]` (and ≤ `0x9c40`), field3 ≤ `0x2710`,
+two 6-bit fields ≤ `0x3f`, one 8-bit field ≤ `0xff`, four 10-bit lanes
+(defensively re-checked ≤ `0x3ff`). The extent guard over the PAC-tagged
+`[x19]`/`[x20]` cursor pair is the same overflow-guard (`CARRY8`) pattern the
+prior session catalogued.
+
+**`[sp+0x98]` mystery resolved.** The earlier `str`-only scan missed the
+stamp because it is an `stp`: `0x146424: stp w11, w10, [sp, #0x98]` writes
+the constant `"bvx1"` (`0x31787662`) to `+0x98` and header word `[x27+4]` to
+`+0x9c` before either post-VLC edge (`0x1464b0` raw, `0x1472a8` VLC). The
+post-VLC compare `cmp w28, "bvx1"` is therefore an internal invariant on that
+stamp, not a stream-magic test. (Dispatcher magic vocabulary, context slot
+`[x19+0x34]`: `0` initial, `"bvx-"` `0x2d787662` = pending-literal-arming
+state — completion writes it at `0x146ac8` together with `[x19+0x44] =
+[x27+4]` and a re-signed cursor —, `"bvx1"`/`"bvx2"` = the freq-table path,
+`"bvxn"` `0x6e787662`; the `w21` compare in the dispatcher is a numeric
+threshold re-armed to `0x31787661` = `"bvx1" − 1` at `0x1471cc`, splitting the
+magic space, not a magic.)
+
+**The `0x891` message mode is materially characterized.** Same engine, same
+per-block algorithm, same static VLC tables. Differences (all static): the
+workspace zero-fill is `0x5768` vs `0xb910` (half-size), the type word is
+`0x3a98` vs `0x9c40` (helper `0x144630` receives `type − 0x10` in both
+modes), and — new — **the type word acts as a runtime upper bound on header
+field1** (`0x146a54: cmp [x19+0x1c88], field1; b.lo → error`). Verified
+against the real SMC stream's block 0: field1 = **39,984** = `0x9c30`
+(= default type word − 0x10, i.e. 16 under the `0x9c40` bound) — passes the
+default arm, **fails the `0x891` arm** (`0x3a98` = 14,936). This statically
+explains the earlier emulation observation that a selector-`0x891` run
+"parses block 0's header and its 360 VLC symbols and exits without a single
+copy-helper call": the run dies exactly at the field1 bound, before any
+copy. So `0x891` = the small-workspace/tighter-bound message variant sized
+for the smaller boot objects its hard-coded loaders (`0x20e0c` boot-file,
+`0xddb10` VMiBoot) carry; the SMC stream is a default/`0x8a1`-mode stream.
+
+Remaining opens in this area shrink to naming only: the public name of the
+`0x8a1` block mode, and which payloads the other selectors (`0x205/0x505/
+0x700–0x702/0x100/0x101`) carry at runtime. No code-behavior opens remain
+for Q4.
+
 ## 3. Candidate list status (crypto/DFU side)
 
 - **C1 (LZFSE match-copy backward-OOB, raw `0x145d80`) — FINAL: latent-only,
@@ -848,6 +924,12 @@ Cross-reference to §7.6 (pmd3 protocol shapes) with today's static service map:
      marshaling/dispatch cluster (kind-tag contexts + `0x136cf8` driver), not
      a staging builder; markers `0x222ad8`/`0x222d40` = arguments of the dead
      splt path.
+   - ~~Open Q4 (VLC/`0x891` internals)~~ — RESOLVED (§2.12): VLC tables +
+     parser pinned (`img+0x207d88`/`0x207da8`; 360 = {20,20,64,256} entries,
+     FSE state-sum checks ≤ {64,64,256,1024}); `0x891` = small-workspace
+     variant whose type word `0x3a98` bounds header field1 — the SMC stream's
+     field1 (39,984) fails it, statically explaining the old selector-`0x891`
+     emulation result. Remaining: naming only.
 4. C2 stays unchanged (lower confidence; prior doc governs).
 5. Housekeeping: `make test` green before every commit; TSVs and DFU fuzz
    session logs stay untracked; wrapper artifacts and `pc4/` cache never
