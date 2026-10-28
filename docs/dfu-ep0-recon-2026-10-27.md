@@ -210,6 +210,25 @@ same template shape as the descriptor records passed to `0xd2c84`/`0xd2ed0`).
   `ctx+0x210/0x260/0x250`: the DFU-core session object's own step-function
   table.
 
+### 2.9 The `0xd2***`/`0xd65***` family classification (2026-10-28, static)
+
+The earlier "resolver" framing is corrected — the family is **checked memory
+and task services**, not a resolver:
+
+- `0xd2c84`/`0xd2ed0` = bounds-checked copy/write wrappers: pointer-kind tags
+  (`*p & 7 ∈ {1, 6}`, pointer body masked `& ~7`), high-bit VA checks
+  (`param[2] >> 0x23 == 0`), violation → `0x13a40c` panic (fail-safe style,
+  checks precede every dereference). `0xd2ed0` is the length-carrying variant
+  (observed lengths: `0x800` DFU status init, `0x200` wipe blocks, `0x140`
+  DFU-core step cards, `0x28` work descriptors).
+- `0xd6590` = **deferred-work queue**: validates a 0x28-byte work descriptor
+  via `0xd2ed0`, stores a busy flag (`+0x26`), schedules with a callback
+  argument (`0x11d018` queues it with callback `LAB_00188ee8` and the DFU-core
+  ctx buffers `+0x98/+0xc0`).
+- The full slot↔handler map question dissolves: the handler slots
+  (`0x23b888..0x23b998`) are runtime-registered by the supervisor-mediated
+  event layer (no static writer — §7.8); static reach ends at the slot table.
+
 ## 3. Candidate list status (crypto/DFU side)
 
 - **C1 (LZFSE match-copy backward-OOB, raw `0x145d80`) — FINAL: latent-only,
@@ -650,6 +669,25 @@ pointer decode = VA − base.
   Class-level reconciliation: `auto-boot` and `build-style` are registry names
   (tables above), `version`/`platform`/`config` are not.
 
+### 7.9 Recovery upload path — protocol notes (docs-only, no device)
+
+Cross-reference to §7.6 (pmd3 protocol shapes) with today's static service map:
+
+- Classical control console: send = `0x40/0` (text command, NUL-terminated),
+  drain = `0xC0/0` (bounded replay of last console output; §7.7 semantics).
+- File upload: init `0x41/0` then bulk on the itf0 endpoint (EP `0x04` OUT) —
+  statically corroborated by the transfer service `0x893d4` endpoint-coding
+  (`4` = ep4-out enqueue; §7.8) and by the pmd3 hardcoded EP choice.
+- Bulk console pair: EP `0x02` OUT (command stream) / EP `0x81` IN (output
+  stream) — statically corroborated by the byte-collect loop at `0x11d9a0`
+  sending on `0x81` (§7.8).
+- Upload finisher per §7.6: final chunk + `dfu_xbuf` tail + crc32 salted, then
+  USB reset. The consumer = the IMG4 trust chain (validation precedes any
+  dereference per the audited style).
+- Arc status: reserved for an explicitly-approved planned session (§7.7). When
+  run, malformed/unsigned IMG4 payloads first (reject-path exercise), real
+  images only if separately approved.
+
 ## 8. Next session plan (updated 2026-10-28)
 
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
@@ -670,7 +708,9 @@ pointer decode = VA − base.
    - ~~`0x11d018` cluster extension~~ — DONE (§2.8); the `0x37188`
      boot-object manager note ("what NEW info the `0x11cd18` acceptance chain
      changes") remains open.
-   - walk the `0xd2c84`/`0xd6590` resolver for the full slot↔handler map (§6).
+   - ~~`0xd2c84`/`0xd6590` resolver walk~~ — DONE (§2.9 + §7.8): family =
+     checked-copy + deferred-work services; the slot↔handler map's static half
+     is complete (event slots runtime-registered, no static writer).
 4. C2 stays unchanged (lower confidence; prior doc governs).
 5. Housekeeping: `make test` green before every commit; TSVs and DFU fuzz
    session logs stay untracked; wrapper artifacts and `pc4/` cache never
