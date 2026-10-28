@@ -334,6 +334,19 @@ alignment arithmetic `udiv/msub`, singleton check against `img+0x159b50`,
 tuple in `x0..x3`. The same `& 7` tag scheme as the checked-copy family
 (§2.9) — one pointer-tagging discipline across the image.
 
+**The `0xd5960` tie-in (the last Q1 plan item).** The function containing
+`0xd5960` (entry `0xd5600`, `pacibsp`-verified) is the **runtime reader of
+the env keys `boot-object-manifests` and `secure-boot-hashes`** — the two
+strings (`img+0x19c419`/`0x19c42f`) are referenced only inside it (main path
+at `0xd59ec/0xd5a1c`, alternate path at `0xd5bb0/0xd5bd0`), via portal-rooted
+lookup descriptors, and the result feeds `0xc2100` — the SMC/manifest
+pipeline the prior analysis tied to the portal root. It has **no static
+callers** (pointer-registered, same style as `0xdc808` and the session
+slots). So the manifest infrastructure has two independent sources into the
+same portal-rooted pipeline: the env keys (via `0xd5960`) and the in-image
+records/stream (via the `0x125b6c` list-loader path) — and the bvx2 container
+consumption is independent of `0xd5960`.
+
 **Consequence for the staging thread.** The `splt`-container path
 (consumer `0xb58c0` + markers) is the alternative layout for a different
 build/config. On this build the embedded `bvx2` stream is consumed **in
