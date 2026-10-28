@@ -7,3 +7,7 @@ __pycache__/
 
 # macOS noise
 .DS_Store
+
+# Local-only device/fuzz logs (never commit)
+dfu-fuzz-log-*.tsv
+dfu-probe-log-*.tsv
