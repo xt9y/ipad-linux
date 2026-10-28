@@ -229,6 +229,37 @@ and task services**, not a resolver:
   (`0x23b888..0x23b998`) are runtime-registered by the supervisor-mediated
   event layer (no static writer — §7.8); static reach ends at the slot table.
 
+### 2.10 The `0x37188` boot-object-manager note — what the acceptance chain changes (2026-10-28)
+
+Resolving the leftover note ("what NEW info does the `0x11cd18` acceptance
+chain change") with the §7.8 map in hand:
+
+- **The shared-base identity**: the per-command/env registry object
+  `img+0x159bb8` decodes (VA = base + offset) to exactly
+  **`0x1FC1A5BB8` — the fixed shared base the earlier SMC/manifest analysis
+  already tied to the registry portal** (`0xc2100`/`0xc2934`). The console
+  command units, the env registry units, the personality registrations, and
+  the DFU state init all reference this same root — the DFU, recovery-console,
+  and env infrastructures are ONE registry family rooted at `0x1FC1A5BB8`.
+- **The acceptance chain's data path stays inside its own state object**: the
+  `0x11cd18` accept path writes DNLOAD chunks into the DFU state object's own
+  buffer (`0x23b9c8`-region), allocated/flushed through `svc #0xc5(w0=4)`
+  (`0x11cd94`), via the checked writers `0x119160`/`0x8c3ac` and the
+  checked-copy finalizer `0xd2c84` — it does NOT write the
+  `0x1FC1EF768..0x1FC229498` staging container directly. The chain→container
+  link remains the untraced consumption step (Open Q1): the boot flow
+  (`0x3724`→`0x37188`→`0x37440`→`0xb5c28`) consumes the DFU-staged image
+  later, through the same portal family.
+- **What the chain therefore changes for the `0x37188` picture**: (a) the
+  supervisor svc layer participates in the DFU data path (alloc at
+  `0x11cd94`, event svc in the session stubs); (b) all writes are checked
+  (kind-tagged pointers, panic-on-anomaly); (c) the fill is tracked by the
+  state latches (`0x3200`/`0x3208`/`0x3209`/`0xb800`/`0xb`, states
+  2/5/7/8/0xa) — the fill-tracking vocabulary the boot-object manager can
+  observe; (d) the DFU state init (`0x11c9dc`) registers its callbacks into
+  the same PAC-signed slot discipline (`0x23b9a8` object, `paciza`) as the
+  session event slots.
+
 ## 3. Candidate list status (crypto/DFU side)
 
 - **C1 (LZFSE match-copy backward-OOB, raw `0x145d80`) — FINAL: latent-only,
@@ -705,9 +736,11 @@ Cross-reference to §7.6 (pmd3 protocol shapes) with today's static service map:
 3. Optional static leftovers (all low priority, none gate any candidate):
    - ~~padded `0x891` probe~~ — DONE (see C1 addendum in §3): identical
      engine statistics and byte-exact expected output.
-   - ~~`0x11d018` cluster extension~~ — DONE (§2.8); the `0x37188`
-     boot-object manager note ("what NEW info the `0x11cd18` acceptance chain
-     changes") remains open.
+   - ~~`0x11d018` cluster extension~~ — DONE (§2.8).
+   - ~~`0x37188` boot-object manager note~~ — DONE (§2.10): shared-base
+     identity resolved (`img+0x159bb8` == `0x1FC1A5BB8` portal root); the
+     acceptance chain stays inside its state object, container consumption
+     remains Open Q1.
    - ~~`0xd2c84`/`0xd6590` resolver walk~~ — DONE (§2.9 + §7.8): family =
      checked-copy + deferred-work services; the slot↔handler map's static half
      is complete (event slots runtime-registered, no static writer).
