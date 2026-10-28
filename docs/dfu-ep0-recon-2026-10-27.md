@@ -409,18 +409,118 @@ Full slot↔handler resolution requires walking the `0xd2c84` resolver over the
 arm is structurally closed and the grant check itself (`0x119160`) is already
 read.
 
-## 7. Next session plan (updated 2026-10-28)
+## 7. Device validation record — 2026-10-28 (live session)
+
+First on-device session. Every vector set was explicitly user-approved before
+issue (connection was user-initiated in DFU; the DFU→recovery flip was
+individually approved via question). Raw logs stay LOCAL ONLY:
+`dfu-probe-log-20261028-*.tsv` in the session tmp dir (never committed;
+contains byte values, errnos, digest prefixes only — no ECID/serial data).
+Commit here: class-level facts only.
+
+### 7.1 Personality map (finalizes the earlier "DFU" reading)
+
+- `05ac:1227` = **SecureROM (BootROM) DFU** — NOT the audited iBoot code.
+  Everything recorded against 1227 describes ROM-side code; architectural
+  cousins of the audited chain at best. Do not attribute 1227 observations to
+  the iBoot image without iBoot-runtime evidence.
+- `05ac:12ab` composite (product string "iPad", 5 configurations,
+  `SupportsIPhoneOS` = Yes, bcdDevice-class stable) = **iBoot recovery** —
+  the audited image's runtime personality. This era's USB serial string
+  carries no `k:v` token pairs (CPID/BDID not extractable from it).
+- Should not be attributed either way without runtime-corroboration: the
+  `0x11c***`/`0x23b9a8` acceptance chain lives in the audited iBoot image,
+  but the 12ab recovery runtime did **not** service DFU-class ep0 requests
+  (7.4), so the audited chain's **live** behavior remains unobserved.
+- Consequence for users of libirecovery/pymobiledevice3: recovery pid range
+  in both `irecv.Mode` tables (and libirecovery.h) is 0x1280..0x1283 only —
+  0x12ab is unmatched, so `irecovery -q` fails structurally ("Unable to
+  connect"), independent of macOS claim/permission issues.
+
+### 7.2 SecureROM DFU observations (05ac:1227)
+
+- Fresh-link baseline (2026-10-24 mirror, class-level): GETSTATUS =
+  `{bStatus=0x00, poll=50 ms (bytes 32 00 00), bState=0x02, iString=0}`,
+  GETSTATE=0x02. Host-visible poll unit = 50 ms; the static constant
+  `0x3200` is a state-object field — different layer, keep interpretations
+  separated.
+- After zero-byte DNLOADs (64 B / 64 B / 32 B — the last one being a
+  block_len-mismatch shape per the static model): bState=0x05 sticky across
+  ≥6 s and repeated GETSTATUS; bStatus stays 0x00; **no error latch is
+  visible at bStatus**; GETSTATUS does not reset to dfuIDLE. This is
+  Apple-nonstandard vs. the DFU spec's error-clearing expectation, but it
+  describes the ROM's own state machine, not the audited chain.
+- Stable fingerprint of record (ROM runtime, state 5): GETSTATUS body
+  `0032000005 00` (digest `f8494b2e4891f7c3`); GETSTATE `05`
+  (digest `e77b9a9ae9e30b0d`).
+
+### 7.3 Personality flip: DFU → recovery via ABORT
+
+- DFU ABORT (`0x21/0x06`, zero data) on 1227 → immediate detach (USBError
+  Errno 5 at t+1 ms; I/O error on control transfer is the detach signature,
+  same as the 10-24 mirror).
+- 05ac:12ab composite enumerated at t≈24.2 s (~15 s was seen after CLRSTATUS
+  in prior sessions — same order of magnitude).
+
+### 7.4 Recovery composite boundary facts (05ac:12ab)
+
+- Interface census (class-level): cfg1 = PTP only; cfg2 = audio + HID;
+  cfg3 = PTP + itf1 `0xff` (bulk 0x02/0x83); cfg4 = PTP + two `0xff`
+  interfaces (itf2 = multi-alt classic console geometry); cfg5 = full
+  composite (PTP + `0xff` + CDC-ACM ×2 + NCM-style data). macOS auto-selects
+  cfg5 on enumeration.
+- Kernel claims are per-config and re-attach within ~3 s after each config
+  switch (claim race): cfg3/cfg4 itf1 are claimable immediately;
+  cfg5 itf1 stays Errno-13 (kernel driver holds it; not releasable without
+  sudo, no passwordless sudo on this host, no `/dev/tty.usbmodem*` exposed).
+- Class-DFU ep0 on the recovery personality: GETSTATUS/GETSTATE at
+  wIndex=0 → **timeout (Errno 60), not stall**; wIndex=1 → host-side claim
+  rejection (Errno 13). Bounded interpretation: this runtime configuration
+  does not externally service DFU-class requests — consistent with the C3
+  default-empty write-grant window posture; live validation of the audited
+  chain needs a DFU-family runtime, not the recovery console composite.
+- ep0 vendor surface attempts (pmd3/irecovery shapes included): all
+  `0x40/0` command-text forms STALL (Errno 32); `0x41/0` opener (pmd3
+  recovery-upload init) times out; `0xC0/0` returns a byte-stable 6-byte
+  blob (semantics unknown; value recorded in the local TSV only). Console
+  text written to bulk 0x02 (cfg3, claim held) was accepted, then the
+  console service stopped accepting writes (subsequent writes timeout).
+  ep0 itself stays healthy throughout (standard descriptor reads OK at
+  every stage: manufacturer/product strings readable, config switchable).
+- Tooling state: pymobiledevice3 11.45.1 installed to user site (pip); its
+  irecv clone shares the same pid limitation, but its doctor/usbmux
+  plumbing may matter for future host-side routes.
+
+### 7.5 Where the acceptance-chain validation stands
+
+- The DNLOAD-arc validation vector (block_len check `0x23b9b0` →
+  `0x3209`/state 0xA; cum/expected `0x23b9b8`/`0x23b9bc` → `0x3208`;
+  success → state 5, timeout `0x3200`) remains **static-model only**.
+- Live corroboration options, in increasing cost:
+  1. SecureROM runtime arc (exists today; but it validates the ROM's own
+     state machine, not the audited iBoot chain);
+  2. recovery console (needs either the 12ab-era protocol understood or a
+     privileged host — sudo/Linux kills the claim barrier);
+  3. loader-stage personality via a controlled restore-prefix flow
+     (heaviest; requires explicit user approval in a planned session).
+
+## 8. Next session plan (updated 2026-10-28)
 
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
    the user first.**
-2. Optional static leftovers (all low priority, none gate any candidate):
+2. Recovery-console access (7.5-2): prefer a privileged host (sudo/Linux) to
+   clear the cfg5-itf1 claim; on any route, first device arc = read-only
+   `getenv build-style` / `getenv version` (runtime identity), only then
+   decide whether the audited acceptance chain is exercisable from the
+   personality set reachable that way.
+3. Optional static leftovers (all low priority, none gate any candidate):
    - ~~padded `0x891` probe~~ — DONE (see C1 addendum in §3): identical
      engine statistics and byte-exact expected output.
    - ~~`0x11d018` cluster extension~~ — DONE (§2.8); the `0x37188`
      boot-object manager note ("what NEW info the `0x11cd18` acceptance chain
      changes") remains open.
    - walk the `0xd2c84`/`0xd6590` resolver for the full slot↔handler map (§6).
-3. C2 stays unchanged (lower confidence; prior doc governs).
-4. Housekeeping: `make test` green before every commit; TSVs and DFU fuzz
+4. C2 stays unchanged (lower confidence; prior doc governs).
+5. Housekeeping: `make test` green before every commit; TSVs and DFU fuzz
    session logs stay untracked; wrapper artifacts and `pc4/` cache never
    committed.
