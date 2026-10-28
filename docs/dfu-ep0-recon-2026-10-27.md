@@ -791,9 +791,10 @@ or an `iBoot-<build>` family — record the exact string it returns.
   `Version:` line on this device: `version` is not an env var on this build.
 - Console output read-back: `0xC0/0` reads REPLAY a bounded window of the
   last console output (non-destructive; content follows the most recent
-  successful sends: `RELEASE\0`×N then `true\0`×N). Each successful send
-  appears to append the value twice — echo/value duality unresolved, low
-  priority.
+  successful sends: `RELEASE\0`×N then `true\0`×N; full local log shows the
+  window as RELEASE×6 → true×8 after the send matrix). The early-sample
+  "appends the value twice" reading is withdrawn — see §7.10: no ring-op
+  doubling exists statically; the window = backlog content.
 - **Class-DFU on the recovery runtime = STALL (Errno 32) at GETSTATUS/
   GETSTATE, wIndex 0 and 1.** Bounded conclusion: the audited ep0 DFU
   acceptance chain is NOT externally serviced via class requests in the
@@ -891,6 +892,41 @@ Cross-reference to §7.6 (pmd3 protocol shapes) with today's static service map:
   run, malformed/unsigned IMG4 payloads first (reject-path exercise), real
   images only if separately approved.
 
+### 7.10 Console-output ring classified; echo/value duality closed (2026-10-28, static)
+
+The backlog behind both drain paths is a **lock-protected masked circular
+buffer** (ring object reached via `[DFU-core ctx+0x78]`): layout `{start, end,
+end2} @+0x00..+0x10`, **write index `+0x40`, read index `+0x44`, count
+`+0x48`, capacity `+0x50`, mask `+0x58`, per-byte write callback `+0x60`
+(`blraaz` per appended byte), drained callback `+0x70`**. Services:
+
+- **Append `0xc03e0`** (write side): per source byte — bounds-checked
+  `src` span and ring object, `buf[write_idx] = byte`, `write_idx =
+  (write_idx+1) & mask`, `count++`. **No static callers** — pointer-registered
+  (the console-write backend), like every other write side in this design.
+- **Getc `0xc04d8`** (read side): returns 0 when empty; per call reads ONE
+  byte (`buf[read_idx]`), `read_idx = (read_idx+1) & mask`, `count--`, fires
+  the drained callback exactly when the count reaches 0. Four static callers:
+  the DFU-core collect loop `0x11d984`, the pump `0x11da84`, and two sites in
+  the `0x7d***` stdio band (`0x7d238`/`0x7d888`). No duplication.
+- **Wait/empty helpers** `0xc049c` / `0xc05e0` (`0xc05e0` also
+  pointer-registered).
+
+Drain paths (`§7.8`): the flush step (`0x11d8c4` fn, ctx+1/+2-gated) fetches
+via `0xc04d8` one byte at a time into a bounds-checked collect buffer
+(`[ctx+0x38..0x48]` window, size = per-session-state table `img+0x203fa0`
+clamped to 0x200), commits via `0x11dac4`, sends on `0x81`; the pump
+(`0x11d9f8` fn) polls via `0xc049c` and either retries on a 1000 ms tick
+(ctx+2 bit0 = bulk-console mode) or does a single fetch. Both are
+**single-copy by construction**: each fetched byte is stored exactly once.
+
+Consequently the drain-window content (RELEASE×6 → true×8) is backlog
+content — the simplest consistent model is one value-append per successful
+send across the send-matrix variants (6 `build-style`, 8 `auto-boot`
+successes); the per-send append count on the write side is pointer-
+registered and not statically decidable. **No ring-op doubling exists
+anywhere statically; the "echo/value duality" item is closed as a
+non-artifact.**
 ## 8. Next session plan (updated 2026-10-28)
 
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
@@ -930,6 +966,9 @@ Cross-reference to §7.6 (pmd3 protocol shapes) with today's static service map:
      variant whose type word `0x3a98` bounds header field1 — the SMC stream's
      field1 (39,984) fails it, statically explaining the old selector-`0x891`
      emulation result. Remaining: naming only.
+   - ~~echo/value duality (×2 ring append)~~ — CLOSED (§7.10): no doubling in
+     any static ring op (append `0xc03e0` / getc `0xc04d8` both single-copy);
+     the drain window = backlog content; write side pointer-registered.
 4. C2 stays unchanged (lower confidence; prior doc governs).
 5. Housekeeping: `make test` green before every commit; TSVs and DFU fuzz
    session logs stay untracked; wrapper artifacts and `pc4/` cache never
