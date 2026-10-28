@@ -888,9 +888,8 @@ Cross-reference to §7.6 (pmd3 protocol shapes) with today's static service map:
 - Upload finisher per §7.6: final chunk + `dfu_xbuf` tail + crc32 salted, then
   USB reset. The consumer = the IMG4 trust chain (validation precedes any
   dereference per the audited style).
-- Arc status: reserved for an explicitly-approved planned session (§7.7). When
-  run, malformed/unsigned IMG4 payloads first (reject-path exercise), real
-  images only if separately approved.
+- Arc status: **RAN 2026-10-28 — §7.11** (reject-path exercise only; real
+  images still require separate approval).
 
 ### 7.10 Console-output ring classified; echo/value duality closed (2026-10-28, static)
 
@@ -927,20 +926,79 @@ successes); the per-send append count on the write side is pointer-
 registered and not statically decidable. **No ring-op doubling exists
 anywhere statically; the "echo/value duality" item is closed as a
 non-artifact.**
+
+### 7.11 Recovery upload reject-path arc — device run (2026-10-28, approved)
+
+**Setup.** Recovery personality reached after the user's second button
+sequence: two 10-minute poll windows first saw only `05ac:12ab` (normal iOS)
+while the device was believed to be in recovery — enumeration remained the
+authority (§7.1 rule re-confirmed); `05ac:1281` appeared only after a fresh
+vol-up/vol-down/hold-TOP sequence. Approved scope: opener + malformed/unsigned
+synthetic payloads, reject paths only; **no DETACH/ABORT/CLRSTATUS, no real
+images, nothing persistent**; console-health check after every step; local-only
+TSV log (`dfu-probe-log-20261028-upload-arc.tsv`, gitignored class).
+
+**Census (unchanged vs §7.7):** cfg1, itf0/alt0 class 0xfe = `[OUT 0x04 bulk]`;
+itf1/alt0 class 0xff = none; itf1/alt1 class 0xff = `[IN 0x81, OUT 0x02 bulk]`.
+
+**Baseline:** ctrl `0x40/0` `getenv build-style` send OK; drain `0xC0/0` →
+`RELEASE\0` (8 B) — console live, audited RELEASE build confirmed.
+
+**Matrix** (each vector: fresh ctrl `0x41/0` opener → bulk `0x04` OUT payload
+→ ZLP when the total is a 512-multiple; pmd3 send_buffer recovery shapes):
+
+| vector | size | bulk write | health drain after |
+|---|---|---|---|
+| tiny4 | 4 B | 4/4 | OK, `RELEASE\0` |
+| rnd64 (fixed-seed) | 64 B | 64/64 | OK, `RELEASE\0` |
+| img4-magic-only (`IMG4`+len+zeros) | 24 B | 24/24 | OK, `RELEASE\0` |
+| img4-truncated-len (claims 0x100) | 12 B | 12/12 | OK, `RELEASE\0` |
+| img4-oversize-len (len 0xFFFFFFF0) | 12 B | 12/12 | OK, `RELEASE\0` |
+| zlp-only | 0 B | — (ZLP only) | OK, `RELEASE\0` |
+| blk512-invalid (512×`A` + ZLP) | 512 B | 512/512 + ZLP | OK, `RELEASE\0` |
+
+**Class-level findings:**
+
+1. **The opener is recovery-personality-specific.** ctrl `0x41/0` accepted
+   (no STALL, no timeout) on 1281 — the identical opener against the 12ab
+   composite timed out (§7.7 first block). Recovery personality serves the
+   upload-init request; normal iOS does not.
+2. **The bulk upload endpoint is an unguarded byte sink at the USB level.**
+   Every payload ACKed completely — malformed, unsigned, magic-only,
+   truncated-length, oversize-length, non-IMG4 — no STALL on any reject-path
+   vector. Rejection is NOT enforced on the transfer path; validation lives
+   downstream (consistent with the static model: checks precede any
+   dereference, §2 audit).
+3. **The console is silent about malformed uploads.** After every step the
+   drain returned exactly the same 8-byte replay `RELEASE\0` (same digest
+   throughout) — **zero backlog appends** (§7.10 ring) from any vector. The
+   runtime emits no console diagnostics for rejected uploads at this stage.
+4. **No wedge, no personality flip, nothing persistent.** Console health
+   passed 9/9 (baseline + 7 vectors + final `getenv build-style` + drain);
+   the device stayed `05ac:1281` throughout and after the run.
+
+**Limits.** The arc exercised the transport side only. Whether the staged
+bytes were validated-and-rejected downstream, or simply left staged pending a
+consumer trigger (e.g. a later boot-class command), is not determinable from
+either observable channel (console silent, USB silent). Discriminating that
+requires a follow-on arc with a consumption trigger — reserved, needs separate
+approval. Minor: pyusb's product-string helper raised AttributeError on this
+enumeration; descriptor probing stayed out of arc scope.
+
 ## 8. Next session plan (updated 2026-10-28)
 
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
    the user first.**
-2. **Recovery personality arc (the unlock; device in NORMAL iOS since the
-   12ab correction).** Ask the user: "IPAD REQUIRED IN RECOVERY" (from normal
-   iOS: VOLUME-UP, VOLUME-DOWN, then hold TOP until the recovery picture
-   appears). Expected 0x1280..0x1283 pid family (irecovery/pmd3-native).
-   Arc order: (a) personality census (product/pid/cfgs); (b) read-only
-   `getenv build-style` / `getenv version` — confirms the audited build;
-   (c) class-DFU GETSTATUS/GETSTATE — tests whether the recovery composite
-   services the audited ep0 chain; (d) only on positive (c) the DNLOAD arc
-   per the static model (mismatch-shaped probes are fail-safe: checks
-   precede any dereference).
+2. **Recovery personality arc — transport side DONE.** (a) Census, (b)
+   `getenv build-style` → RELEASE, (c) class-DFU = STALL, and (d) the upload
+   reject-path matrix (opener `0x41/0` + 7 malformed/unsigned vectors on bulk
+   `0x04`) all ran clean: §7.7 + §7.11. Remaining: **consumer-trigger
+   discrimination** — whether staged upload bytes are validated on a later
+   boot-class command or left staged — needs a separate approved arc (console
+   send of a boot-style command after a staged upload). Real-image arcs stay
+   separately approved; DNLOAD-class arcs per the static model remain a
+   fallback (mismatch-shaped probes are fail-safe: checks precede any
+   dereference).
 3. Optional static leftovers (all low priority, none gate any candidate):
    - ~~padded `0x891` probe~~ — DONE (see C1 addendum in §3): identical
      engine statistics and byte-exact expected output.
