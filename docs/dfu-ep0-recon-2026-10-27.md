@@ -582,6 +582,74 @@ or an `iBoot-<build>` family — record the exact string it returns.
   invasive (image upload + trust validation) and stays reserved for an
   explicitly-approved planned session.
 
+### 7.8 Static wiring of the recovery console (device-independent, same session)
+
+Method note (reusable): raw file offsets == Ghidra addresses for this image;
+runtime VA = `0x1fc04c000` + offset. Load base derived base-free: (1) histogram
+of 8-aligned qwords whose low-12 bits match a known string offset's low-12 bits
+(top candidate `0x1fc04c000`, 8 hits), then (2) delta-consistency pairs of
+adjacent qwords differing by known string deltas (`reboot`→`getenv` = 0x34;
+`getenv`→`setenv` = 0x7) — confirmed by exact matches `0x15c3e0`→`reboot`,
+`0x15c6b0`→`getenv`, `0x15c7a0`→`setenv`. Pool qwords store full VAs; exact
+pointer decode = VA − base.
+
+- **Command noun table** (units stride 0x78, from `0x15c370`): reboot (first,
+  structurally special), reset, bgcolor, setpicture, firmware, devicetree,
+  getenv, saveenv, setenv, setenvnp, clearenvp, ramdisk, rsepfirmware, plus one
+  more unit at `0x15c988` (tag variant). Unit shape: `{name-ptr, obj img+0x159bb8,
+  packed {tag 0x80f0 << 48 | code-offset}, obj img+0x15a9d8, 3×BSS byte-ptrs
+  (0x272bb8+i region, two aliasing the same byte; bgcolor shares reset's slot),
+  obj img+0x159bb8, zeros, optional 0x2, name-ptr, name-ptr}`.
+  All packed low-32 code offsets disassemble as valid `pacibsp`-functions:
+  getenv→`0x5698`, reset+bgcolor→`0x51c8`, setpicture→`0x5210`, firmware→
+  `0x52ac`, devicetree→`0x50a0`, rsepfirmware→`0x56f8`, saveenv→`0xc51ec`,
+  setenv→`0x51c4`, setenvnp→`0xc52e4`, clearenvp→`0xc550c`, ramdisk→`0xc5574`.
+  Noun strings are referenced ONLY via these table slots (no adrp+add
+  formations, no direct BL — pointer-table design; the earlier zero-hit scan
+  was a base-blindness artifact, now corrected).
+- **Parallel table** at `0x19e1c0` (stride 0x20, rows `{name, obj img+0x15aa00,
+  name, name}`) mirrors the command sequence.
+- **Env registry**: 0x20-stride units at `0x15bab8..` (auto-boot, boot-args,
+  debug-uarts, pwr-path, anid, apt-carveout-size-mb, auto-boot [2nd], auto-boot-
+  once, audio-features …; name blob at `0x210a20..`); a separate name/defaults
+  blob at `0x197***` (auto-boot `0x1974be`, build-style `0x197887`, version
+  `0x197899`, security-domain `0x199983`) has no pool refs. Two early walkers:
+  `0x3a7c` (from `0x15bab8`, ≤5 units: loads the 4 unit qwords into x4–x7 and
+  calls `0x4f40`, continue-check `0xd2054`, index from `0x4fbc`) and `0x3afc`
+  (from `0x15bb58`, ≤39 units, then resolver-band calls `0xd233c`/`0xd23a4`
+  with the `0x1972ef` string) = early env/registry init. `0xd233c` itself is a
+  bounds-check helper (panic `0x1f`/`0x28` on violation) — the band-wide
+  fail-safe style again.
+- **Recovery USB session architecture**:
+  - setup `0x86514`: poll flag via `0xfad74`, mark session active, `0x86430`
+    (usb setup), register personality via `0x11c684` (names "Apple Mobile
+    Device (Recovery Mode)" `0x19a15b` / "(DFU Mode)" `0x19a17f`, registry
+    object `img+0x159bb8`), fill descriptor record via `0x11c7f8`
+    (`{session, session, session+0x40, record img+0x188728}`), then the poll
+    loop `0x11c818` → work `0x11c26c`.
+  - `0x11c684` allocates via `svc #0xc5` (w0=4 — the supervisor event/alloc
+    svc) and registers through `0x124a74` with record `img+0x188728`.
+  - **Event-slot dispatch**: stubs at `0x11c244+` — `svc #0xc5(4)` →
+    load PAC-signed slot `0x23b888..0x23b998` (17 slots, 0x10 apart) →
+    `braaz` call; empty slot = panic (line numbers 0x27..0x87; panic-tag
+    magics formed at `0x11c654`/`0x11c998`). **No static writer exists for
+    these slots — they are runtime-registered by the supervisor-mediated
+    event layer; static reach ends at the slot table.**
+  - transfer service `0x893d4(ep, buf, ...)`: endpoint-coded args observed:
+    `0x80` = ep0-in (DFU GETSTATUS response), `2` = ep2-out, `0x81` = ep1-in,
+    `4` = ep4-out (the pmd3 upload endpoint). A byte-collect loop at
+    `0x11d9a0` (`ldrb [sp,#0xf]` → `strb [x8+x21]`, ring bounds
+    `[x22+0x38..0x48]`, then `0x893d4(0x81, count)`) = console output
+    collection onto the bulk-IN stream — matching the census geometry
+    (itf1 alt1 IN `0x81`/OUT `0x02`), so the session serves a classical
+    control console AND a bulk console pair.
+- Reconciliation with the live device (§7.7): the env-lookup-at-send runs in
+  the ep0 control-write path whose handler is one of the runtime-registered
+  slots — the unknown-env→STALL decision sits above static reach, consistent
+  with the band's design (bounds-checked, panic-on-anomaly, no error leaks).
+  Class-level reconciliation: `auto-boot` and `build-style` are registry names
+  (tables above), `version`/`platform`/`config` are not.
+
 ## 8. Next session plan (updated 2026-10-28)
 
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
