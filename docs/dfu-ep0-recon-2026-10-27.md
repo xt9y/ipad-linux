@@ -260,6 +260,89 @@ chain change") with the §7.8 map in hand:
   the same PAC-signed slot discipline (`0x23b9a8` object, `paciza`) as the
   session event slots.
 
+### 2.11 Open Q1/Q2 resolved — no `splt` staging on this build; the `bvx2` stream is consumed in place (2026-10-28)
+
+**Container identity (corrects the earlier "needs runtime staging" hypothesis).**
+With the load base `0x1fc04c000` established (§7.8), the container VA in the
+static descriptor object `0x215ed8` (+0x00/+0x08 = `0x1FC1EF768`) decodes to
+`img+0x1a3768` — **verified in-file: the bytes at `0x1a3768` are the `bvx2`
+magic**, the start of the embedded compressed stream, and `container +
+0x39D30 = 0x1FC229498` = `img+0x1dd498` (still inside the 0x2262c8 file) — the
+object length is exactly the stream region. The container is the image's own
+data region seen through the same flat `K + offset` VA space as every other
+pool pointer (all checked pool VAs decode consistently).
+
+**The validator `0xb5b68` is check-only and the `splt` path is dead on this
+build.** Full decode:
+
+- `null container || zero length` → panic (line 0x14c); container must lie in
+  `[x1, x2)` (else `0x13a40c`).
+- `[container]` must equal `0x746c7073` (`splt`) — the compare constant is
+  formed at `0xb5b9c`; **it is the only `splt` formation in the entire image**
+  (no literal `splt` bytes anywhere, no other `movk #0x746c`) → there is no
+  splt-header builder, statically or otherwise.
+- On magic match: `[+0x10]` and `[+0x14]` must be non-zero,
+  `([+0x14] << 2) + 0x18 < length`, then `0xc098c` is run over the span
+  `container+8 .. container+8+(([+0x14] << 2) + 0x10)` and **must equal
+  `[container+4]`** — a checksum of the input stream stored in the header.
+- Return value = (`[container] == 'splt'`).
+
+On this image the container holds `bvx2`, so the validator returns 0
+deterministically and the loader branches to the skip path — **no runtime
+staging of the container ever happens**: the header is never built and the
+stream bytes are never copied anywhere.
+
+**The loader flow `0xb5c28` (called from `0x37440` ← `0x37188` ← `0x3724`)**:
+
+1. `0xb5c48: bl 0xb695c` — a marshaling fragment (the `0xb6800..0xb6984`
+   cluster is a pool of such fragments, each a few instructions + `ret`),
+   reversing the incoming `x0..x3` into `x19..x22`; `x22` = incoming arg0 =
+   the descriptor object (`0x215ed8`, passed down the boot flow).
+2. `bl 0xb6818` — typed-span dispatch with the kind-4 context `img+0x191488`
+   → `0x136cf8` (below); result checked non-null (else panic line 0x167).
+3. The object must lie in `[in-x1, in-x2)`; fields poked: `*+0x28 &= ~3`,
+   `+0x30` zeroed, `+0x38` zeroed.
+4. Local descriptor built at `sp+0x48`: `{container, container, obj+0x10,
+   obj+0x18, len=[obj+0x48]=0x39D30, type=[obj+0x54]=0x8A1}`.
+5. `type != 0` → validator → **fails** → skip path.
+6. Skip path: the `0xb6984` fragment (`x7 = img+0x159c60`, stack byte set)
+   then **the list loader `0x125b6c`** with the `0x235b48` endpoint-block
+   pointers. (The dead splt path would instead have pushed the interface
+   markers `0x222ad8`/`0x222d40` and `{input = container+0x18, end}` and
+   called the consumer `0xb58c0`.)
+7. Both paths join: log tag, flag-set (`[obj+0x40]`, bit `[obj+0x62]`), then
+   the status service `0x125cb0` (six callers) whose result becomes the
+   return value.
+
+**Interface markers decoded.** `0x222ad8`'s pointer fields target
+`img+0x222ac0/0x222ac4`, which hold the ASCII strings **"SMC", "smc/",
+"ips-smc-", "nub"** — it is the SMC nub name bundle (IORegistry-style),
+rooted at the portal `img+0x159bb8`. `0x222d40` (`0x222ad8 + 0x268`) is the
+near-empty second marker (`{0, 0x0001000100000000, 0…}`).
+
+**Q2 — the `0xb6814`/`0x136cf8` cluster classified.** It is not a staging
+builder: `0xb6814` = a jump-table/fragment cluster whose tails form `x4` kind
+contexts (`img+0x191488` kind 4 — a real pointer descriptor; `img+0x159bb8`,
+`0x159c88`, `0x159b78` kind 1 — self-referential marker objects, first word
+pointing at themselves+1, tag = `w0 & 7`) and branch into `0x136cf8`, the
+typed-span driver: load `*x4`, strip the 3-bit tag, read the pointee's first
+word `& 7` as its kind, dispatch via the PC-relative jump table at
+`0x137040`; per-kind span transforms (element size from `0x137068`, stride/
+alignment arithmetic `udiv/msub`, singleton check against `img+0x159b50`,
+`>> 0x23` VA-validity gates, a reserve call `0x1386e8`, conversion
+`0x137520`), fallback copy worker `0x1368b8`; returns the (adjusted) span
+tuple in `x0..x3`. The same `& 7` tag scheme as the checked-copy family
+(§2.9) — one pointer-tagging discipline across the image.
+
+**Consequence for the staging thread.** The `splt`-container path
+(consumer `0xb58c0` + markers) is the alternative layout for a different
+build/config. On this build the embedded `bvx2` stream is consumed **in
+place** through the descriptor/list-driven path (`0x125b6c` family — the
+pair the prior analysis already tied to the SMC `0x801/0x802` arm). The
+decode chain end `0xdcc84` → `0xddb10` (`VMiBoot `/`LZFSE`) is entered via
+`0xdc808`, which has **no static callers** (pointer-registered, matching the
+image's registration style) — the one remaining dynamic entry in this thread.
+
 ## 3. Candidate list status (crypto/DFU side)
 
 - **C1 (LZFSE match-copy backward-OOB, raw `0x145d80`) — FINAL: latent-only,
@@ -744,6 +827,14 @@ Cross-reference to §7.6 (pmd3 protocol shapes) with today's static service map:
    - ~~`0xd2c84`/`0xd6590` resolver walk~~ — DONE (§2.9 + §7.8): family =
      checked-copy + deferred-work services; the slot↔handler map's static half
      is complete (event slots runtime-registered, no static writer).
+   - ~~Open Q1 (runtime staging)~~ — RESOLVED (§2.11): no `splt` staging on
+     this build; validator is check-only and fails deterministically on the
+     in-file `bvx2` stream, which is consumed in place via the list-loader
+     path; only `0xdc808` (decode-chain entry) remains pointer-registered.
+   - ~~Open Q2 (`0xb6814`/`0x136cf8`)~~ — RESOLVED (§2.11): typed-span
+     marshaling/dispatch cluster (kind-tag contexts + `0x136cf8` driver), not
+     a staging builder; markers `0x222ad8`/`0x222d40` = arguments of the dead
+     splt path.
 4. C2 stays unchanged (lower confidence; prior doc governs).
 5. Housekeeping: `make test` green before every commit; TSVs and DFU fuzz
    session logs stay untracked; wrapper artifacts and `pc4/` cache never
