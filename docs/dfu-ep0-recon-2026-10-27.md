@@ -546,6 +546,42 @@ BUILDSTYLE vocabulary present. The console dispatch really is the audited
 code. At device time, `getenv version` is expected to answer in the banner
 or an `iBoot-<build>` family — record the exact string it returns.
 
+### 7.7 Recovery-arc results (05ac:1281 — the unlock session)
+
+- Personality: `05ac:1281` "Apple Mobile Device (Recovery Mode)" — matched by
+  libirecovery AND pmd3 (RECOVERY_MODE_2) — one configuration: itf0 class
+  `0xfe` with a single bulk OUT `0x04` (the pmd3 recovery-upload endpoint
+  shape, confirmed), itf1 class `0xff` alt0 empty / alt1 = bulk IN `0x81` +
+  OUT `0x02` (console). Classical geometry confirmed end-to-end.
+- Class identifiers (USB serial string, filtered to class-level): CPID
+  `0x8103` (T8103/M1 class — J407 ✓), CPRV `0x11`, BDID `0x10`, CPFM `0x03`,
+  SCEP `0x01`, IBFL `0x3d`, **SRTG = "N/A"** (the recovery runtime does not
+  carry the ROM tag in the serial string — that field is ROM-DFU-stage).
+- Console LIVE on the classical protocol: pmd3 IRecv `getenv build-style` →
+  `RELEASE` (first identity answer from the audited runtime; matches the
+  in-image `RELEASE`/BUILDSTYLE vocabulary).
+- **ep0 vendor-write does env-lookup at send time** (behavior of record):
+  accepted = known env names (`build-style` → `RELEASE`, `auto-boot` →
+  `true`); unknown names (`version`, `platform`, `config`, `build-id`,
+  `buildid`, `build-timestamp`, `build`, `security-domain`, `secure-epoch`,
+  `boot-delay`, `SERIALNUM`) STALL the send (Errno 32) — reject at the ep0
+  layer, never queued. This is why libirecovery's own `-q` shows no
+  `Version:` line on this device: `version` is not an env var on this build.
+- Console output read-back: `0xC0/0` reads REPLAY a bounded window of the
+  last console output (non-destructive; content follows the most recent
+  successful sends: `RELEASE\0`×N then `true\0`×N). Each successful send
+  appears to append the value twice — echo/value duality unresolved, low
+  priority.
+- **Class-DFU on the recovery runtime = STALL (Errno 32) at GETSTATUS/
+  GETSTATE, wIndex 0 and 1.** Bounded conclusion: the audited ep0 DFU
+  acceptance chain is NOT externally serviced via class requests in the
+  recovery runtime either — the chain's live validation requires the
+  DFU-family runtime arc (ROM DFU behaves, ROM-side; audited-chain arc
+  remains static-model), OR the recovery upload path (`0x41` + bulk) which
+  exercises the IMG4 consumer chain with REAL file semantics — that arc is
+  invasive (image upload + trust validation) and stays reserved for an
+  explicitly-approved planned session.
+
 ## 8. Next session plan (updated 2026-10-28)
 
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
