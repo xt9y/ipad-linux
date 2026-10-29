@@ -889,7 +889,8 @@ Cross-reference to §7.6 (pmd3 protocol shapes) with today's static service map:
   USB reset. The consumer = the IMG4 trust chain (validation precedes any
   dereference per the audited style).
 - Arc status: **RAN 2026-10-28 — §7.11** (reject-path exercise only; real
-  images still require separate approval).
+  images still require separate approval). **Follow-on consumer-trigger arc
+  RAN 2026-10-29 — §7.12.**
 
 ### 7.10 Console-output ring classified; echo/value duality closed (2026-10-28, static)
 
@@ -985,20 +986,112 @@ requires a follow-on arc with a consumption trigger — reserved, needs separate
 approval. Minor: pyusb's product-string helper raised AttributeError on this
 enumeration; descriptor probing stayed out of arc scope.
 
-## 8. Next session plan (updated 2026-10-28)
+### 7.12 Consumer-trigger arc — device run + static addendum (2026-10-29, approved)
+
+**Goal.** Make the IMG4 consumer chain observable: stage synthetic payloads
+through the sanctioned upload shape, then issue the sanctioned execution
+verbs and watch the console. User approval referenced "do what you need now
+to get closer to booting Linux"; scope = `go`/`bootx` verbs only.
+
+**Static addendum (pre-work, closes a §7.8 blind spot).** The §7.8 noun
+walk covered `0x15c370` forward only; a bidirectional scan found HIDDEN
+units at lower offsets and the real noun-string blob:
+
+- Noun strings live at **`img+0x211290..`**: reboot `0x211290`, reset
+  `0x211297`, bgcolor `0x21129d`, setpicture `0x2112a5`, firmware
+  `0x2112b0`, devicetree `0x2112b9`, getenv `0x2112c4`, saveenv `0x2112cb`,
+  setenv `0x2112d3`, setenvnp `0x2112da`, clearenvp `0x2112e3`, ramdisk
+  `0x2112ed`, rsepfirmware `0x2112f5`.
+- **`bootx` = a second "structurally special" unit at `0x15b180`** (same
+  shape as the reboot unit: `{obj, ptr, packed {0x13, 0x110}, …}`, name tail
+  at `+0x68/+0x70` = `0x15b1e8/0x15b1f0`). Its `0x40000001`-family packed
+  words at `0x15b168/0x15b178` read as **vendor H2D `0x40` + bRequest `0x01`**
+  bindings = the headless-restore execution channel.
+- **Hidden simple units**: `go` at `0x15b270` — handler code **`0x183c`** —
+  and `memboot` at `0x15b1f8` — handler code **`0x1164`**. `go`'s prologue
+  passes a 9-byte binary blob at `img+0x1e31af` through `0xe6a0`
+  (start/end/0 args) then calls grant-band `0x7e83c`; deeper BLs include
+  `0x82054`/`0x86390` (IMG4 band). `memboot` does a 4-char key lookup
+  (`w0 = 0x3c427478`, i.e. `tx`+`<B` halves) via `0x12e518`, then
+  `0x7e60c`-family grant calls.
+- `memboot`'s string sits in the misc-name blob near `bootx`:
+  `bootx` `0x210750`, **`memboot` `0x210756`**, `go` `0x21075e`,
+  `nvme_firmware0`/`spi_nand0` follow. Only `bootx` has qword slots
+  (`0x15b1e8/0x15b1f0`); `go` is referenced by the unit at `0x15b270`
+  (slots `0x15b270/0x15b2d8/0x15b2e0`).
+- Env-table extension (from the same scan): `pwr-path`, `anid`, `auto-boot`,
+  `backlight-nits`, **`one-time-boot-command`**, `ramrod-kickstart-aces`,
+  `device-material`, `dev-unset-debug-enabled`, `idle-off`,
+  `force-upgrade-fail`, `security-mode-change-enable`,
+  `com.apple.System.tz0-size`, `upgrade-retry`, `preserve-debuggability`,
+  `panicmedic-panic-count/telemetry`.
+- **Sanctioned protocol shapes (pmd3 `restore/recovery.py`)**: after a
+  `send_buffer` upload, boot verbs go on a SEPARATE channel —
+  `send_command("go"|"bootx", b_request=1)` = ctrl **`0x40/1`** (matches the
+  bootx static binding above); flows: upload iBEC → `go` (bR1); upload
+  RestoreKernelCache → (suppressed class `0x21/1`) → optional
+  `setenv boot-args` → `bootx` (bR1). Console nouns stay on `0x40/0`.
+
+**Device record.** Personality `05ac:1281` confirmed at every check
+(enumeration authority); console baseline `getenv build-style` (bR0) →
+drain `RELEASE\0` (8 B) before and after. Ladder (all sends succeeded,
+no STALL):
+
+| # | stage (opener `0x41/0` + bulk `0x04`) | trigger | console result |
+|---|---|---|---|
+| 1 | — (bare) | `go` bR1 | **silent** |
+| 2 | vecA: `IMG4`+len+16 zeros (24 B) | `go` bR1 | **silent** |
+| 3 | vecB: structural synthetic unsigned IMG4 — `IM4R`(64B)+`IM4M`(SEQ-hdr+320B zeros) shell, 412 B | `go` bR1 | **silent** |
+| 4 | (vecB residual from #3) | `bootx` bR1 | **silent** |
+| 5 | vecB re-staged (412/412) | `go` bR1 | **silent** |
+| 6 | vecB re-staged (412/412) | `bootx` bR1 | **silent** |
+
+Console health after every step: the drain returned **exactly the same
+8-byte `RELEASE\0` replay (digest `ae31dcb6649b12df`)** in every single
+drain of the whole session — zero backlog appends (§7.10 ring) from any
+vector or any trigger. No wedge, no personality flip, nothing persistent;
+12 sends total across the ladder, all clean.
+
+**Tooling facts.** macOS claim behavior is per-handle: the handle that
+performs the first successful bulk write keeps working; subsequently created
+handles get `USBError [Errno 13] Access denied` on bulk OUT (and
+`set_configuration()` alone does not clear it) — a fresh good handle requires
+device re-enumeration. Future recovery arcs must open ONE handle and reuse it
+for the whole session. (Observed: fresh-handler errno-13 streaks after the
+first successful bulk write; a persistent handle did 2× 412/412 writes plus
+all control traffic.)
+
+**Interpretation (static-consistent hypothesis, stated as such).** All six
+triggers were accepted and produced no observable diagnostics on either
+channel. The verbs are recognized (per §7.7's unknown-env-name STALL
+behavior, unrecognized sends stall — these did not). The prime hypothesis:
+`go`/`bootx` are registration-keyed — the handlers look up boot-object state
+(`go`: blob-keyed register op through `0xe6a0`; the noun family `firmware`/
+`devicetree`/`ramdisk`/`rsepfirmware` = the boot-object-registration verbs
+per §2.10) and the synthetic staging never produced a registered object, so
+both verbs early-exit silently. The consumer chain (IMG4 trust evaluation)
+remains **dark on every sanctioned path attempted**; making it observable
+likely requires either real-file nouns (`firmware`/`devicetree` with staged
+bytes — new arc, new approval) or an actual signed component (excluded —
+nothing Apple-proprietary handled locally).
+
+## 8. Next session plan (updated 2026-10-29)
 
 1. **Device-side work needs the iPad. Do nothing on-device without alerting
    the user first.**
-2. **Recovery personality arc — transport side DONE.** (a) Census, (b)
-   `getenv build-style` → RELEASE, (c) class-DFU = STALL, and (d) the upload
-   reject-path matrix (opener `0x41/0` + 7 malformed/unsigned vectors on bulk
-   `0x04`) all ran clean: §7.7 + §7.11. Remaining: **consumer-trigger
-   discrimination** — whether staged upload bytes are validated on a later
-   boot-class command or left staged — needs a separate approved arc (console
-   send of a boot-style command after a staged upload). Real-image arcs stay
-   separately approved; DNLOAD-class arcs per the static model remain a
-   fallback (mismatch-shaped probes are fail-safe: checks precede any
-   dereference).
+2. **Recovery arc — transport + sanctioned-trigger sides DONE.** Census,
+   `getenv` baseline, class-DFU = STALL, upload reject-path matrix, and the
+   consumer-trigger ladder (`go`/`bootx` ×6 across staged/empty, all silent)
+   ran clean: §7.7 + §7.11 + §7.12. Remaining device candidates (each needs
+   separate approval): (a) **file-registration nouns** — `firmware`/
+   `devicetree`/`ramdisk` console nouns with staged synthetic bytes, to see
+   whether the boot-object registration step prints diagnostics and whether
+   a subsequent `go`/`bootx` then reaches the IMG4 chain; (b) the
+   `one-time-boot-command` env route (setenv without saveenv + reboot —
+   reboot ends the recovery session); (c) real-image arcs (excluded unless
+   the user produces/prefers one). MANDATORY for all future device arcs:
+   one persistent USB handle per session (fresh handles die with
+   errno 13 after the first bulk write, §7.12).
 3. Optional static leftovers (all low priority, none gate any candidate):
    - ~~padded `0x891` probe~~ — DONE (see C1 addendum in §3): identical
      engine statistics and byte-exact expected output.
