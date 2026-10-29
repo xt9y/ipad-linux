@@ -151,12 +151,83 @@ identifiers survive in the clear:
 | **H5 (new)** | **SPTM dispatch verb router** | classify: enumerate pages of the tables via xref, replay FUNCTIONID verbs with argument shapes in emulation; the SoC-key table resolution question (§2) is the first static milestone of this harness |
 | **H6 (new)** | **j407↔j408 delta-bounded copies** | use delta-region locations to pick paragraph-level corpora from the boards' differing data islands |
 
-## 4. Open items
-1. Recreate a full decompile frame for the two binaries (Ghidra binary
-   missing locally; re-install or a Capstone+Ahoci-based pass).
-2. H5 milestone 1: dispatch-table resolution (locate `GEN3_DART_*`
-   tables' addresses, see how a `FUNCTIONID` verb is resolved through
-   them).
-3. t8103↔t8112 SPTM delta (sibling SoC) — same delta methodology.
-4. The named ROM-level audit check (DART config in SecureROM) stays
-   gated on Phase B's long-shot (no public dump known).
+## 4. Standing open items (pre-H5)
+
+1. Full decompile frame for SPTM + consolidated iBoot (Ghidra binary
+   currently absent on this host; Java is present). Governs how far
+   Phase D static milestones can be pushed per session.
+2. ROM-level DART-config check stays gated on the Phase B long-shot
+   (no public T8103 SecureROM bytes known).
+3. Inventory sync for newly written analysis
+   state (`audit-j408-delta/`, `audit-sptm/`, scripts) is done in the
+   side-local ledger (never committed).
+
+## 5. H5 milestone 1 — SPTM dispatch/verb plumbing located (partial)
+
+Artifacts: `audit-sptm/xref-sptm-t8103.md`, `xrefs-dispatch-ids.md`,
+`delta-t8103-vs-t8112-report.md`, `identifiers-sptm-t8103.md`
+(all side-local; script `sptm_dispatch_analysis.py`).
+
+### 5.1 SPTM-as-Mach-O segment map (t8103 payload)
+| Segment | vmaddr (base `0xfffffff027000000` +) | fileoff | filesize |
+|---|---|---|---|
+| `__TEXT` | +0x0000 | 0x00000 | 0x18000 |
+| `__DATA_CONST` | +0x18000 | 0x18000 | 0x8000 |
+| `__LATE_CONST` | +0x24000 | 0x20000 | 0x80000 |
+| `__TEXT_EXEC` | +0xa4000 | 0xa0000 | 0x5c000 |
+| `__LAST` | +0x100000 | 0xfc000 | 0x4000 |
+| `__DATA` | +0x104000 | 0x100000 | 0x14000 |
+| `__BOOTDATA` | +0x118000 | 0x114000 | 0x18000 |
+| `__LINKEDIT` | +0x130000 | 0x12c000 | 0x20 (vmsize 0x4000) |
+
+`VA − 0xfffffff027000000 = file offset` is a single constant slide, so
+the flat Capstone walk maps directly onto the t8103 SPTM layout. The
+"second code mass" (`0xa0000–0xfc000`, the 99.9%-decode delta band) is
+**`__TEXT_EXEC`** — the SoC-varying code; `__LATE_CONST`
+(`0x20000–0xa0000`) holds the string/formats blobs; `__DATA_CONST`
+(`0x18000–0x20000`) holds the pointer registries.
+
+### 5.2 Located structures
+1. **Domain-name registry at `0x1aeb0`** (`__DATA_CONST`): 21
+   consecutive tagged pointers of the form `0x001000000000xxxx` whose
+   low bits are exactly the string addresses of
+   `SPTM_DOMAIN`, `SPTM_DISPATCH_TABLE_{XNU_BOOTSTRAP, NVME, SART,
+   UAT, HIB, GEN3_DART_XNU, GEN3_DART_SK, …}` (string cluster
+   `0xf004–0xf225` in `__LATE_CONST`). The registry is an ordered name
+   table for the domain classes — a stable, parseable dispatch
+   skeleton.
+2. **Verb/registration plumbing** around `0xe4000–0xe5f00`
+   (`__TEXT_EXEC`): extensive `SPTM_DOMAIN` name-string flows
+   (dozens of references) + the two hot routines `0xf5a20`/`0xf5a60`
+   (in-edges 873/476) recurring as assert/abort/log funnel with
+   stack-built records and small verb-id immediates (`w0 = 0x2f/0x4f/
+   0x61/0x62/0x70/0x2b/…`). This code mass is the natural
+   SPTM-verb-fuzz entry area once decompile framing exists.
+3. **Out-of-mapping resyncs flagged:** a few `adrp+add` targets
+   (`0x1b0030`) lie beyond the mapped span; linear-walk artifacts, not
+   tables — decompile-framed scanning will drop these false leads.
+
+### 5.3 t8103 vs t8112 SPTM delta (methodology transferred)
+1,228,832 vs 1,245,216 B (t8112 is 16,384 B larger), **41.74%** in 10
+regions, `pacibsp` 370→385. Unlike the iPad pair (identical code
+frame, config-only deltas), **the SPTM SoCs differ in real code mass**
+(`__TEXT_EXEC` band and `__DATA_CONST`) — per-SoC monitor builds.
+Region inventory (side-local report):
+- R2 `0x41e6–0x17000` (0% decode): `__LATE_CONST`-band data incl. the
+  memory-registration assert strings ("Attempted to register a managed
+  memory reg…", "…unaligned IO r…", "length is greater than the
+  maximum", `rc32_dec`, `hib_init_sha_context`) — ready fingerprint
+  vocabulary for the IOMMU/registration fuzzing family.
+- R3 `0x18010–0x20000` (`__DATA_CONST`), R6 `0xab0d4–0xfb000`
+  (`__TEXT_EXEC`, 327 KB!), R10 `0x12c000–0x130020` (the SoC-size
+  tail) = genuine code-level SoC divergence.
+
+### 5.4 Milestone status
+- **H5-M1 (this record): tables located; verb plumbing located;
+  dictionary ready.**
+- **H5-M2 (next):** per-domain handler binding (which function
+  pointer pairs with which domain name — needs the registry entry
+  *buddy* structure followed) + the SoC-routing question (why no
+  t8103-named dispatch table). Requires decompile-frame tooling —
+  Ghidra binary is not installed on this host right now (Java 26 is
+  present); re-install is queued as a next-step unit of work.
