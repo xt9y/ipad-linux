@@ -327,7 +327,7 @@ row-pattern, resolved to containing pacibsp functions:
   stride `0x40`) and `IOMMU_ID_*` names at `0x1f3f0`
   (`SHART, SART, NVME, UAT, DART_T8020, DART_T8110, DART_T6000,
   CPUTRACE, DART_GEN3`).
-- SoC-routing answer (class level): the t8103 build's dispatch tables
+- SoC-routing answer (class level, refined in §7): the t8103 build's dispatch tables
   are named by IOMMU *family*; `IOMMU_ID_DART_GEN3` and the
   `VIOLATION_T8020_DART_*` code list coexist in one build — family
   selection is a runtime/decomposition property, so "GEN3_DART_*"
@@ -335,15 +335,113 @@ row-pattern, resolved to containing pacibsp functions:
 - Build tag found: **`SPTM-820.0.22|2026-08-08:13:06:06.975686|`**
   @`0x1f458`.
 
-### 6.6 Remaining for M3
-1. Verb-dispatch entry points: which `0xe4xxx`–`0xe5xxx` functions
-   perform the table lookup (the `0x1aeb0` names + aux rows are
-   already enumerated), i.e. the exact FUNCTIONID→handler resolution
-   call site(s);
-2. Complete per-domain row extraction (the DART-family tables'
-   `(name, fn)` arrays — analogous to NVME/HIB/SART blocks — plus the
-   remaining board-table columns) into a single machine-readable
-   FID→fn map;
-3. Then H5 verb-fuzz hook (harness H5) can be designed from the
-   enumeration (class-level only; target = SPTM running in a research
-   sandbox, not a user device).
+## 7. H5 milestone 3 — verb routing resolved (done)
+
+Tooling break-through: **Ghidra 12.2 is already installed** (brew
+formula `ghidra`, Apache-2.0, no license needed — à la `brew` bottle
+under `/opt/homebrew/opt/ghidra/libexec`, which is why earlier
+`find -maxdepth 4` for `analyzeHeadless` missed it at depth 5). The
+brew build ships *without* the Groovy script provider (headless rejects
+`.groovy` with "missing plugin"), so the bulk-decompiler is a **Java
+GhidraScript** (`ghidra-scripts/DumpDecompiled.java`, side-local) run via
+`analyzeHeadless … -import sptm.t8103.bin -scriptPath … -postScript
+DumpDecompiled.java <out> -deleteProject`. Note: project dir must be
+dot-less (Ghidra rejects `.ghidra-hl`) and pre-created.
+Result: `audit-sptm/decompiled-sptm.md` — **564 functions of
+`__TEXT_EXEC` decompiled** (50.3k lines). Ghidra's loader confirms the
+pointer-word format empirically ("Fixed up 981 chained pointers").
+
+### 7.1 The way a verb is routed
+1. **Entry registration:** the router `fn@0xe8c24` is installed into
+   exception/entry vectors by `fn@0xe7f64(vec, e8c24, mask)` with
+   `vec=0/1/2/10` and masks `2/4/8/0x10` (per-entry-class flag words;
+   one late variant receives them as parameters).
+2. **The router (`fn@0xe8c24`, 752 B)** reads the packed call word:
+   - bit 32–39: `domain_id` (8 bits);
+   - bits 6–7: must be zero;
+   - bits 0–5: `endpoint_id` (6 bits, i.e. 64 rows per table max).
+   Per-domain data: registry at fileoff `0x09de68`
+   (`PTR_PTR_fffffff02709de68[domain * 2]` = table pointer), sibling
+   16-byte-slotted block at `0x09de70` (domain badge/name pointer —
+   these are the SPTM_DOMAIN / per-domain registries decoded in §6).
+3. **Row lookup:** `[table + endpoint_id * 0x18]` — 24-byte rows.
+   Row slot0 = handler pointer; slot1 = flags byte (bit0 =
+   allowed in state `0x16` = `STATE_SPTM_REENTERED_BY_XNU`; bit1 =
+   allowed in state `0x14` = `STATE_PANIC_SPTM_CALLED_BY_XNU`);
+   slot2 = aux/flags word. Zero slot0 = unregistered verb →
+   assert `0x31`.
+4. **Call gate:** `fn@0xa6430(handler, deep_flag)`: reads the per-cpu
+   context block (sysreg, cpu-record), clears/sets `DAIF` masks
+   (`0x3c0` full-mask; `| 0x200` per-depth when `deep_flag`), calls
+   `handler(cpu_ctx->x0 @+0xb40, x1 @+0xb48)`, then stores the x0/x1
+   return pair back into the context and restores the saved register
+   suite. **Verb handlers receive the caller's saved registers from
+   the per-cpu invocation context.**
+5. **Assert format in the router:**
+   `"%s(%s:%d) - caller_domain(%s), domain(%s), table(%s),
+   endpoint_id(%s)"` with assert ids `0x31/0x61/0x62/0x70/0x2c` —
+   exactly the domain/state name arrays and id immediates of §5–§6.
+   A HIB-variant dispatcher `fn@0xe953c` (700 B) uses
+   `UNK_fffffff02701ed98 + idx*8 + type*0x38` (flat 8-slot pages).
+6. **Table registration API:** client verbs
+   `TXM_TO_SPTM_ENDPOINTID_REGISTER_DISPATCH_TABLE → fn 0xebebc`,
+   `SK_TO_SPTM_ENDPOINTID_REGISTER_DISPATCH_TABLE → fn 0xebebc-family`,
+   FID0 `LOCKDOWN → fn 0xeb534` (mid-fn entry of the master
+   table-registration routine `fn@0xe9cd8`, size 8,528 B). Mode tables
+   register from the boot configuration rows (`0x099e68…`: SPTM
+   `0x1dbf0`, TXM `0x1e1f0`, SK `0x1e7f0`, HIB `0x1edf0`).
+
+### 7.2 Core FUNCTIONID declaration table (const)
+File `audit-sptm/fid-table.md` (side-local). Const rows at
+`0x1dc00–0x1e210`, 24-byte stride, `{name ptr, fn ptr, aux}`; row
+index = FID number:
+`LOCKDOWN→0xeb534, RETYPE→0xebf54, MAP_PAGE→0xed5a8, MAP_TABLE→0xee1a0,
+UNMAP_TABLE→0xf0a28, UPDATE_REGION→(0xf0b44+0x6f0), UNMAP_REGION→
+(0xf1278+0x64), UNMAP_DISJOINT→0xf1840, CONFIGURE_SHAREDREGION→0xf1f44,
+NEST_REGION→0xf28bc, UNNEST_REGION→0xf3008, CONFIGURE_ROOT→0xf3214,
+SWITCH_ROOT→0xb8e20, REGISTER_CPU→0xbc224, FIXUPS_COMPLETE→0xf4608,
+SIGN_USER_POINTER→0xf4b30, AUTH_USER_POINTER→0xe42a8,
+REGISTER_EXC_RETURN→(0xb9224+0x448), CPU_ID→(0xb9224),
+SLIDE_REGION→0xf1310, UPDATE_DISJOINT_MULTIPAGE→0xf4ea4,
+GUEST_VA_TO_IPA→0xf39dc, GUEST_STAGE1_TLBOP→0xf43a0,
+GUEST_STAGE2_TLBOP→0xf4d24, GUEST_DISPATCH→0xf40f8, GUEST_EXIT→0xc0560,
+HIB_BEGIN→0xc2358, HIB_VERIFY_HASH_NON_WIRED→0xc24e4,
+HIB_FINALIZE_NON_WIRED→0xc8770,
+[aux 3 separator]
+IOFILTER_PROTECTED_WRITE→0xf1a84, SET_SHARED_REGION→0xf4810,
+BATCH_SIGN_USER_POINTER→0xeee20, SURT_ALLOC→0xef4d8,
+SURT_FREE→(0xee1a0+0x738), CONDEMN_LEAF_TABLE→(0xee8e4+0x530),
+UNCONDEMN_LEAF_TABLE→(0xc2670+0xcc), SPTM_SERIAL_PUTC→0xc28c4,
+SPTM_SERIAL_DISABLE→0xb9760, OUTPUT_AREA→0xbc570`
+Table header (0x1dbe0-0x1dbf8): `{str@f5cf, "SPTM-rx", dispatch fn
+0xb89ec}`. Several rows carry flag-ish name metas
+(`0x007/0x004/0x00a/0x02b/0x010…0000`) and mid-function entry points
+(+0x64…+0x738) — per-row restriction/entry markers, matching the
+runtime-registered rows' flag bytes.
+Per-mode tables:
+- TXM mode (`0x1e218+`): `FIXUPS_COMPLETE→0xe3f64`,
+  `REGISTER_DISPATCH_TABLE→0xeb534`, `RETYPE→(0xf4b30+0x1d0)`,
+  `USER_ASID` (sparse);
+- SK mode (`0x1e800+`): `REGISTER_DISPATCH_TABLE→0xebebc`,
+  `RETYPE→0xd565c`, `PHYS_TO_TYPE` (sparse);
+- HIB (`0x1edf0+`): the six `SPTM_HIB_ENDPOINTID_*` rows (§6.4).
+
+### 7.3 Consequences for the harness (H5)
+- The verb-fuzz enumeration is now complete: **per-domain tables,
+  per-row flags, and the packed call-word layout**
+  (`{domain 8b @32 | flags @6-7 | endpoint 6b @0}`) are known at
+  class level.
+- Sensitive surfaces to enumerate first in any future
+  research-sandbox experiment: the *sparse/flagged* rows
+  (CREATE/UNMAP/GUEST/SURT families) — their flag bytes decide when
+  calls are legal, and the router proves the flags are state-checked
+  (`0x16`/`0x14` states) — a clean checklist for a correctness-
+  focused (non-offensive) harness spec.
+- No device needed for any of this; next H-blocks (H1–H6 selection
+  per kickoff §8) proceed host-side.
+
+### 7.4 Deliverable status
+H5-M2/M3 **done and merged into the record**; `decompiled-sptm.md`
+(564 fns) + `fid-table.md` + scripts remain side-local per policy.
+Next: Phase D harness selection/implementation (kickoff §8) — the H5
+spec can be drafted directly from §7.1/§7.3.
