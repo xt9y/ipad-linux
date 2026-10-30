@@ -61,6 +61,16 @@ Firestorm: 0x10100 0x10101 0x10102 0x10103
 
 The release slots are also required to live outside the memory range advertised as usable to Linux. Without that rule, Linux could allocate over the m1n1 holding-pen target words while secondary CPUs still depend on them.
 
+Upstream m1n1's `kboot.c` upholds that invariant by adding a memreserve entry for its own image with `fdt_add_mem_rsv(dt, _base, _end - _base)`. Our fixed-size Stage-2 FDT buffer cannot carry added memreserve entries and the `boot_info` ABI advertises a single usable range, so the same invariant is represented differently on this side: `ipad_linux_m1n1_seed_environment()` computes the advertised range as `cur_boot_args.phys_base .. phys_base + mem_size` with the m1n1 image region `[_base, _end)` excluded.
+
+The exclusion is done by shrinking the advertised range from the edge that touches the image. The mathematically unrepresentable configurations fail closed in `j407_m1n1_usable_ram()`:
+
+- usable memory on both sides of the excluded image region (two disjoint ranges), or
+- the image region covering the whole advertised range, or
+- `phys_base + mem_size` overflowing the 64-bit address space.
+
+The boundary arithmetic is exhaustive over those cases: image below/above the advertised range keeps the full range (nothing overlaps), image at the start or the end of the range keeps the non-image remainder, and a degenerate tiny image is handled identically to a full-size one. This is a semantic equivalent of upstream's memreserve, not a reimplementation of CPU-start logic, and it keeps the release slots and the allocator-resident DTB/boot_info outside anything Linux is told it may allocate over.
+
 ## What is deliberately not implemented here
 
 This repository does not duplicate m1n1's T8103 PMGR/RVBAR CPU-start sequence. Upstream already has the relevant SoC-specific implementation and tracks the Apple CPU-start details across SoC generations.

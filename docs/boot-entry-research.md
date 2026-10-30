@@ -2,7 +2,9 @@
 
 Target: iPad Air 5 Wi-Fi (`iPad13,16`, `J407AP`, M1/T8103, CPID `0x8103`, BDID `0x10`).
 
-This document separates mechanisms that can actually hand control to a native Linux loader from mechanisms that merely provide code execution inside iPadOS.
+This document separates mechanisms that can actually hand control to a native Linux loader from mechanisms that merely provide code execution inside — or under — iPadOS.
+
+Last full public survey: **2026-10-22**.
 
 ## Required capability
 
@@ -17,11 +19,11 @@ The project ultimately needs an execution environment that can hand the machine 
 - place a Linux `Image`, DTB and optional initrd in valid physical RAM;
 - branch to the Linux entry point with `x0 = dtb` and `x1..x3 = 0`.
 
-A normal application sandbox escape is not sufficient. A conventional jailbreak may be useful research infrastructure, but it is not automatically equivalent to a Linux chainloader.
+A normal application sandbox escape is not sufficient, and neither is a kernel exploit inside a running iPadOS: by the time the kernel (or anything above it) is compromised, SecureROM/iBoot have already booted a fully signed chain, and the pre-boot environment the loader needs has already been consumed. A conventional jailbreak is research infrastructure, not a Linux chainloader.
 
 ## Evidence collected
 
-### Target identity — now verified on physical hardware
+### Target identity — verified on physical hardware
 
 The target identity was first established from public firmware/device data and was then confirmed on the physical iPad on 2026-08-13:
 
@@ -38,6 +40,36 @@ Build            23F77
 ```
 
 This is important: the iPad Air 5 is **M1**, not M2. T8103 is also used by first-generation M1 Macs, which gives us substantial reusable SoC support.
+
+Re-verified on device on 2026-10-22 (simple usbmuxd pairing, strictly read-only, no changes made to the device): the board identity is unchanged and the firmware has moved on. The device now runs:
+
+```text
+ProductType      iPad13,16          (unchanged)
+HardwareModel    J407AP             (unchanged)
+ChipID           0x8103 / BoardID 0x10
+ActivationState  Activated
+iPadOS           27.0 beta 7
+Build            24A5424a           (seeded 2026-08-24)
+Boot chain       mBoot-20457.2.37
+```
+
+That is neither the GA 27.0 (`24A437`) nor the currently signed 27.0.1 (`24A446`) — between the 2026-08-13 validation and this check the device enrolled in the 27.0 developer beta, and `iPadOS 27.0 beta 7 / 24A5424a` is the boot image that has been actually observed on it. The 26.5 record above stays as the earlier hardware observation. Practical consequences:
+
+- the previously observed `mBoot-18000.120.36` recovery/boot chain is now outdated for this specific device; any further offline boot-chain inspection needs a J407 identity from a `24A5424a` manifest (the `23F77` section below remains valid purely as the historical record it was);
+- the easily-recognized research constraint stands: being on a beta seed narrows future restores relative to the public signed build `27.0.1 (24A446)`, but nothing about this adds a boot-entry primitive.
+
+**Resolution (2026-10-24, later the same day): the beta state was ended.** The device was updated off the beta seed onto the signed GA and re-verified first-hand over USB:
+
+```
+ProductType       iPad13,16
+ProductVersion    27.0.1
+BuildVersion      24A446          <- the signed GA build analyzed offline
+Boot chain        mBoot-20457.2.37 (same version as the 24A446 payloads; SHA-256
+                  prefix dc3cb25f29f25645 of the unified image)
+CPUArchitecture   arm64e
+```
+
+The beta profile was removed, automatic update installs were switched off, and the environment is now pinned: the on-device boot chain versions against the artifacts documented in `docs/boot-chain-recon-24a446.md` (digest prefixes and class facts only; raw payloads stay in the local-only archive). The BootROM itself is unmodified hardware — `iBoot-5540.0.0.400.2` (SRTG) was already recorded first-hand in DFU and no iPadOS update can change it.
 
 ### Physical USB and Recovery validation
 
@@ -87,6 +119,8 @@ The iBSS, iBEC, LLB and iBoot IM4P containers identify the same `mBoot-18000.120
 
 The BuildManifest marks the relevant boot/restore objects trusted. The Recovery Customer Install identity marks both `iBSS` and `iBEC` with `Personalize = True`, and their restore rules depend on Image4/security/production state.
 
+For comparing later builds against `23F77` offline, `tools/j407-firmware-diff.py` now diffs two BuildManifests (identity fields, boot-chain components and digests, per-component restore policy, NeRD-type policy keys) with ECID/serial-class values always redacted.
+
 ### NeRD / RecoveryOTA evidence
 
 The J407 Recovery Customer Install identity contains:
@@ -102,6 +136,49 @@ Many of its variant contents are labelled `RecoveryOTAProduction`.
 No `PermitNeRDPivot` value was present in the J407 identity. This pass also found no Mac-style `LocalPolicy`, `CustomOS`, `coih`, `lpnh`, `smb0`, `smb1`, `smb2` or `nsih` fields.
 
 Public TSS implementations model `NeRDEpoch` and optional `PermitNeRDPivot` as Apple TSS request fields together with an Image4 ticket request. Therefore `AllowNeRDBoot` is treated here as evidence of an Apple-authorized recovery/restore path, **not** as evidence that the device accepts arbitrary unsigned m1n1/Linux payloads.
+
+## 2026 public boot-entry survey
+
+The following public developments were reviewed against the required capability. None of them provides a boot-entry primitive for T8103.
+
+### usbliter8 — SecureROM exploit, wrong SoC generation
+
+- Published 2026-06-18 by the Paradigm Shift research group; immediate comparisons went to checkm8 because the flaw likewise cannot be patched — it is in immutable silicon.
+- Mechanism (as described in public coverage): a DMA buffer underflow in the Synopsys DWC2 USB controller reachable in DFU's SecureROM, combined with the SecureROM's ISP (DART) configuration: on affected chips the SecureROM runs the DART in a mode that lets the underflowing DMA pointer reach (and rewrite) arbitrary SRAM. Post-exploitation, a custom USB request handler is injected and the device's USB serial string gets `PWND:[usbliter8]`; from there unsigned iBoot can be loaded, and production state can apparently be temporarily demoted. The Secure Enclave is reported unaffected.
+- Affected silicon: **A12, A13, S4, S5** only (public exploit excludes A12X/A12Z; A11 is not affected; coverage states A14 and later — which includes every M1/T8103 device — appear out of reach because that DART-under-bypass configuration is what made the primitive exploitable there).
+- Affected SecureROM versions: `3865.0.0.4.7` – `4479.0.0.100.4` (Per The Apple Wiki; newer SecureROM generations reflect the same hardware fix).
+- Status: Paradigm Shift's writeup and source were pulled under a preliminary injunction dated 2026-07-21 (Magnet Forensics v. Del Gaudio); archived copies and independent implementations (e.g. ElcomSoft's hardware/RP2350 USB-hosted variant) circulate.
+- **Conclusion for this project:** the exploit's reach ends at the A13/S5 generation. T8103 is two-plus generations past it and has a different USB controller generation and different SecureROM DART discipline. There is no evidence of an equivalent primitive for T8103, and nothing in this repository may assume one. This is a strong reminder that SecureROM USB-class research (the controller that both DFU and Recovery expose) remains the natural frontier for a future entry primitive.
+
+### Project Cascadia — native Linux on iPad exists, but consumes an A5-bootROM-era primitive
+
+- rzxvx's Project Cascadia (September 2026) boots a current Linux kernel (6.12) and Alpine Linux natively on the original iPad mini (Apple A5, S5L8942X), with touch, Wi-Fi and an XFCE desktop. Per its author it is the first step of an intended A5 → A6 → A12/A13 progression.
+- The enabling tooling is the 32-bit A5–A11 boot-chain family: the device is checkm8-vulnerable (A5 is in the checkm8 set), and Cascadia is built on the earlier "iBSSloader"-style custom-iBSS booting work (see the curated index at `ipadlinux.org`, which also lists iBoot32Patcher and checkm8_bootkit as the relevant stack).
+- **Conclusion for this project:** this is the first credible *native* Linux-on-iPad precedent the community has had in years — and it works precisely because the A5 BootROM has a public, unpatchable entry primitive. Every iPad-native Linux path known to date consumes a BootROM or patched-iBoot entry primitive from the A5–A11 era. That is the class of tool this project lacks for T8103, and the gap is a silicon-generation gap, not an engineering-effort gap.
+
+### VirtualMacOniPad — real work on our exact SoC, wrong capability class
+
+- nfzerox's VirtualMacOniPad (2026) runs full macOS as a VM under iPadOS on M1/M2 iPad Pro **and M1 iPad Air (i.e. our exact J407 SoC)**, using the Apple Hypervisor framework plus paravirtualized graphics.
+- To do this it jailbreaks (Dopamine/Taurine), extracts the Hypervisor/Virtualization/ParavirtualizedGraphics frameworks out of a macOS image with `uncache.py` (iPadOS ships without the shared-cache entries), emulates the USB devices needed for installation, and additionally **requires iPadOS ≤ 16.3.1**: iPadOS 16.4+ removed Hypervisor support from the XNU kernel.
+- **Conclusion for this project:** impressive, but this is a VM *under* iPadOS. The guest macOS never touches SecureROM/LLB/iBoot, iPadOS itself owns the machine, and the tool needs (a) a jailbreak and (b) a firmware Apple stopped signing — 16.x has been unsigned for more than two years (27.0.1 being the currently signed J407 build). It is not a boot-entry mechanism and cannot be adapted into one without the very primitive this project is missing. It does, however, prove the J407 silicon is fully capable of workloads far heavier than our loader target.
+
+### Jailbreak landscape 2026 — no M1-era channel, and jailbreaks are the wrong class anyway
+
+- Dopamine 3.0 (August 2026) brought iOS 26 support — but only to **A12/A13 devices at 26.0–26.0.1** (via the momentarius PPL bypass by staturnzz and TheRealClarity). The A14–A17 Pro / **M1–M2** arm64e channel caps at iOS 15.0–17.3.1 (via the Titan PPL/SPTM bypass by alfiecg24).
+- **Our device is on 26.5+ and unjailbroken.** There is no public jailbreak for iPadOS 26/27 on any M1-class iPad as of this survey; coverage reports nothing reliable above iOS 18.x for jailbreak-class access generally.
+- Even a future M1-era PPL-era exploit (per the "kernel exploit ≠ boot entry" rule above): the moment it exists at all, it yields code execution under a fully approved iBoot-sealed chain — and it would be use-dependent for *observation* while remaining useless for pre-boot entry. This project treats both capabilities as strictly separate lanes.
+
+### Signing state (as of 2026-10-22)
+
+```text
+iPadOS 27.0.1 (24A446)   SIGNED    <- only currently signed J407 build
+iPadOS 27.0   (24A437)   unsigned
+iPadOS 26.6.2 (23G90)    unsigned
+iPadOS 26.6.1 (23G83)    unsigned
+iPadOS 26.5   (23F77)    unsigned  <- firmware observed on the device 2026-08-13
+```
+
+Closing the 26.x signing window removed any restore-based research margin (an Error/Downgrade experiment that would have needed a device restore}) — any future restore-path research is now pinned to builds restoring as 27.0.1. This is purely informational for now: no signed-restore path provides boot entry by itself.
 
 ### Linux support exists for the SoC, not this board
 
@@ -121,11 +198,9 @@ That remains the core architectural difference between the installable Asahi pat
 
 No verified public M1/T8103 J407 BootROM entry primitive is assumed by this repository. Absence of a public method is not proof that no vulnerability can exist; it means the project currently has no reproducible immutable early-boot primitive to build on.
 
-### Jailbreak status is a different capability class
+Per the 2026 survey: the last public SecureROM-class primitive (usbliter8, June 2026) stops at the A13/S5 silicon generation; the last public patchable-iBoot generation tools are A5–A11-era; and the closest working iPad-native-Linux precedent (Project Cascadia, September 2026) depends on exactly those A5-era tools.
 
-Code execution inside a running iPadOS stack is not automatically equivalent to the pre-Linux EL1/EL2, MMU, cache, interrupt and DMA control required by this loader.
-
-A jailbreak could still be useful for runtime observation, but the native boot-entry problem must be treated separately.
+Re-checked 2026-10-24: The Apple Wiki's T8103 page still lists **"Vulnerabilities: None"** for the BootROM; no new public T8103-class primitive has appeared.
 
 ## What is already ready once entry is solved
 
@@ -138,20 +213,24 @@ The repository now has a clean target for any future legitimate entry mechanism:
 5. Bounded live Apple Device Tree parsing and `ranges` translation.
 6. J407-specific platform discovery isolated under `src/platform/j407/`.
 7. J407 Linux FDT built from upstream T8103 support plus independently verified board data.
-8. Eight-core SMP contract.
+8. Eight-core SMP contract enforced on the payload side.
 9. Mainline Linux + J407 DTB + static diagnostic initramfs cloud build.
-10. m1n1 payload packer, live-ADT dumper, host preflight, first-boot analyzer and hardware-report builder.
+10. m1n1 payload packer (fail-closed on FDT root compatible), live-ADT dumper, host preflight, first-boot analyzer, hardware-report builder and BuildManifest diff tool.
+11. m1n1-side J407 adapter (`integration/m1n1/ipad_linux_adapter.c`): SMP collection, environment seeding, and RAM exclusion of the m1n1 image region so spin-table words and next-stage structures can never be advertised as allocatable to Linux.
 
 ## Current physical status
 
 ```text
-J407 identity                       VERIFIED ON DEVICE
+J407 identity                       VERIFIED ON DEVICE (2026-08-13, re-checked 2026-10-22)
 normal USB-C data link              VERIFIED ON DEVICE
 Apple Recovery USB                  VERIFIED ON DEVICE
-mBoot recovery prompt               VERIFIED ON DEVICE
-mBoot build                         VERIFIED ON DEVICE
+mBoot recovery prompt               VERIFIED ON DEVICE (26.5 era)
+firmware on device (2026-10-24)     VERIFIED ON DEVICE: iPadOS 27.0.1 / 24A446
+                                    (beta ended and pinned 2026-10-24)
+boot chain on device (2026-10-24)   VERIFIED ON DEVICE: mBoot-20457.2.37
+BootROM (SRTG) on device            VERIFIED ON DEVICE: iBoot-5540.0.0.400.2
 matching 26.5 IPSW/BuildManifest    VERIFIED OFFLINE
-J407 iBSS/iBEC/iBoot identities     VERIFIED OFFLINE
+J407 iBSS/iBEC/iBoot identities     VERIFIED OFFLINE (23F77 era, superseded by 24A446 offline pass)
 Image4 trust/personalization        VERIFIED OFFLINE
 m1n1 execution on J407              NOT ACHIEVED
 Linux execution on J407             NOT ACHIEVED
@@ -168,7 +247,9 @@ B. Turn that execution environment into a correct T8103/J407 Linux boot environm
 
 Problem B is substantially prepared. Problem A remains the hard gate.
 
-Nothing found in the physical validation invalidates the Linux design. Native Linux remains technically plausible because T8103 is already a Linux-capable SoC and the physical device exactly matches the J407 assumptions used by the software. But until m1n1 (or an equivalent loader) can actually be executed on J407, a physical Linux boot remains unproven.
+The 2026 survey sharpens problem A: no public entry primitive exists for T8103 silicon, the public SecureROM research frontier (USB DFU class) is the right axis but two generations shy of our chip, and every working native-Linux-on-iPad precedent is anchored in BootROM primitives from earlier silicon. Kernel-side exploits, as of the same survey, have not reached M1-era iPadOS 26/27 devices — and even when they eventually do, they remain in the wrong capability class for this loader.
+
+Native Linux remains technically plausible: T8103 is already a Linux-capable SoC (mainline), and the physical device exactly matches the J407 assumptions used by the software. But until m1n1 (or an equivalent loader) actually executes on J407, a physical Linux boot remains unproven — and none of the mechanisms surveyed above claims to have done that.
 
 ## Public references
 
@@ -187,4 +268,24 @@ Nothing found in the physical validation invalidates the Linux design. Native Li
 - AppleDB device metadata for `iPad13,16`
   - https://appledb.dev/device/identifier/iPad13,16.html
 - The Apple Wiki — T8103
-  - https://theapplewiki.com/wiki/T8103
+  - https://theapplewiki.com/wiki/T8103 (BootROM "Vulnerabilities: None" checked 2026-10-24)
+- The iPhone Wiki — T8103 ( chipset overview, BootROM 5540.0.0.400.2, "Vulnerabilities: None" )
+  - https://www.theiphonewiki.com/wiki/T8103
+- The Apple Wiki — usbliter8 exploit (affected SecureROM range, injunction)
+  - https://theapplewiki.com/wiki/Usbliter8_Exploit
+- The Hacker News — "Unpatchable usbliter8 Exploit Breaks Apple A12 and A13 SecureROM Boot Chain" (2026-06-19)
+  - https://thehackernews.com/2026/06/unpatchable-usbliter8-exploit-breaks.html
+- Security Affairs — "usbliter8 Brings Unpatchable BootROM Exploit to Apple A12 and A13 Devices"
+  - https://securityaffairs.com/193965/hacking/usbliter8-brings-unpatchable-bootrom-exploit-to-apple-a12-and-a13-devices.html
+- ElcomSoft blog — A12 usbliter8 BootROM sigpatches (hardware-hosted variant)
+  - https://blog.elcomsoft.com/2026/07/a12-usbliter8-bootrom-sigpatches/
+- GitHub — rzxvx/Project-Cascadia (native Linux on the A5 iPad mini)
+  - https://github.com/rzxvx/Project-Cascadia
+- iPad Linux — curated native-Linux-on-iPad project index (Cascadia/usbliter8 entries)
+  - https://ipadlinux.org
+- GitHub — nfzerox/VirtualMacOniPad (macOS VM under iPadOS, M1/M2 iPad, Hypervisor extraction)
+  - https://github.com/nfzerox/VirtualMacOniPad
+- The Apple Wiki — Dopamine (supported iOS ranges per chip generation)
+  - https://theapplewiki.com/wiki/Dopamine
+- securityonline.info — "Dopamine 3.0: First iOS 26 Jailbreak Is Here" (2026-08-08)
+  - https://securityonline.info/dopamine-3-ios-26-jailbreak/

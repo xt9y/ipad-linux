@@ -2,34 +2,46 @@ name: tools
 
 on:
   push:
-    branches: [ ipad-air-5, 'integration/**' ]
+    branches: [ main, ipad-air-5, 'integration/**' ]
     paths:
       - '.github/workflows/tools.yml'
       - 'tools/**'
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
+      - 'tests/pack_m1n1_scan_test.py'
       - 'tests/analyze_first_boot_test.py'
       - 'tests/build_hardware_report_test.py'
       - 'tests/verify_first_boot_kit_test.py'
       - 'tests/host_preflight_test.py'
       - 'tests/j407_firmware_test.py'
+      - 'tests/j407_firmware_diff_test.py'
       - 'tests/z2fw_test.py'
+      - 'tests/dfu_fuzz_test.py'
+      - 'tests/boot_image_recon_test.py'
+      - 'tests/boot_image_disasm_test.py'
+      - 'tests/boot_image_xref_test.py'
       - 'tests/adt_function_test.c'
       - 'tests/adt_clock_test.c'
       - 'src/adt/**'
   pull_request:
-    branches: [ ipad-air-5 ]
+    branches: [ main, ipad-air-5 ]
     paths:
       - '.github/workflows/tools.yml'
       - 'tools/**'
       - 'scripts/pack-m1n1-j407.py'
       - 'tests/pack_m1n1_test.py'
+      - 'tests/pack_m1n1_scan_test.py'
       - 'tests/analyze_first_boot_test.py'
       - 'tests/build_hardware_report_test.py'
       - 'tests/verify_first_boot_kit_test.py'
       - 'tests/host_preflight_test.py'
       - 'tests/j407_firmware_test.py'
+      - 'tests/j407_firmware_diff_test.py'
       - 'tests/z2fw_test.py'
+      - 'tests/dfu_fuzz_test.py'
+      - 'tests/boot_image_recon_test.py'
+      - 'tests/boot_image_disasm_test.py'
+      - 'tests/boot_image_xref_test.py'
       - 'tests/adt_function_test.c'
       - 'tests/adt_clock_test.c'
       - 'src/adt/**'
@@ -80,6 +92,24 @@ jobs:
 
       - name: Test J407 firmware tree checker
         run: python3 -m unittest -v tests/j407_firmware_test.py
+
+      - name: Test J407 firmware BuildManifest diff tool
+        run: python3 -m unittest -v tests/j407_firmware_diff_test.py
+
+      - name: Test m1n1 payload scanner simulation
+        run: python3 -m unittest -v tests/pack_m1n1_scan_test.py
+
+      - name: Test DFU read-side fuzz/harness vectors
+        run: python3 -m unittest -v tests/dfu_fuzz_test.py
+
+      - name: Test boot image recon tool
+        run: python3 -m unittest -v tests/boot_image_recon_test.py
+
+      - name: Test boot image decode pass
+        run: python3 -m unittest -v tests/boot_image_disasm_test.py
+
+      - name: Test pc-relative data xref pass
+        run: python3 -m unittest -v tests/boot_image_xref_test.py
 
       - name: Test Z2FW touchscreen validator
         run: python3 -m unittest -v tests/z2fw_test.py

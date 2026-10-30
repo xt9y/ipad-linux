@@ -3,7 +3,7 @@ name: linux-bundle
 on:
   workflow_dispatch:
   push:
-    branches: [ ipad-air-5, 'integration/**' ]
+    branches: [ main, ipad-air-5, 'integration/**' ]
     paths:
       - '.github/workflows/linux-dts.yml'
       - 'dts/**'
@@ -11,7 +11,7 @@ on:
       - 'initramfs/**'
       - 'scripts/build-initramfs.sh'
   pull_request:
-    branches: [ ipad-air-5 ]
+    branches: [ main, ipad-air-5 ]
     paths:
       - '.github/workflows/linux-dts.yml'
       - 'dts/**'

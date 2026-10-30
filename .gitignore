@@ -1,0 +1,13 @@
+# Payload build artifacts
+build/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# macOS noise
+.DS_Store
+
+# Local-only device/fuzz logs (never commit)
+dfu-fuzz-log-*.tsv
+dfu-probe-log-*.tsv
