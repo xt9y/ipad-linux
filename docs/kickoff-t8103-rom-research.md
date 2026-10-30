@@ -300,6 +300,12 @@ verified by a second independent reproduction.
   user on whether/how to disclose upstream (Apple Product Security) —
   the project's precedent is coordinated disclosure (usbliter8 did the
   same); decide BEFORE any PoC artifact leaves the local machine.
+- LLM-output hygiene: an artifact/name/claim that resurfaces from an
+  earlier LLM pass (ours or an adviser's) is treated as **reused
+  hallucination, not new evidence** until it is independently grounded
+  in repo evidence or a cited public source. Program step 1 already
+  discarded several such fabricated names; this makes the discipline
+  standing policy for Phase F triage and any future write-up.
 - Repo hygiene unchanged; `make test` before every commit; pushed branch
   stays public — treat push = publication.
 
