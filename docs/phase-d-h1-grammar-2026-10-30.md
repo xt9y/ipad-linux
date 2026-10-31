@@ -145,15 +145,42 @@ Acceptance asymmetry: the recovery stage tolerates any
 `{len==0 || ptr==0}` region, the manifest stage does not — the gate
 difference is now pinned in the instruction sequence, not inferred.
 
-## 8. Remaining guard classes (campaign v2 postures)
+## 8. Campaigns v2 — longform / capacity closure (2026-10-31)
 
-- walker-range asserts (0x1360f0/f4/f8) and the overflow guard
-  (0x136864 site): unreachable via short-form lens in v1 — require
-  long-form length encodings (declared lengths > 255) to approach.
-- duplicate-children count overflow and rebase-descriptor extent
-  behaviors: queued against the same driver with corrected bases.
-- The post2/post3 assert-ordering asymmetry is stable evidence for the
-  Phase E argument that stage-local invariants differ per slot kind.
+Second campaign (111 anchored seeds, same substrate): long-form length
+encodings and duplicate/capacity classes, targeting the four
+non-reachable guard sites from §3.
+
+**Long-form canonicality gate.** Every long-form length encoding —
+including two- and three-octet encodings whose declared value exactly
+matches the actual content (`81 3e` for 62) — rejects with err 3 at
+every walk position: the walker enforces DER **minimal-length**
+canonicality. Poisoned-descriptor shapes (rebase slots declared ≈ 2⁶⁴
+across the `cmn`-carry region) therefore never reach the stage-feed
+capture heads.
+
+**Guard-reachability closure.** With minimal-length enforced and all
+over-declared short-form lengths extent-checked (or absorbed only
+inside island-less set bodies), the rebase-overflow guard
+(0x136864) and walker-range asserts (0x1360f0/f4/f8) are **not
+reachable from the input grammar**; output-plane writes stayed flat
+across all 114 runs. The only input-reachable fault class in the whole
+campaign set remains the outermost zero-value guard (§5).
+
+**Duplicate / capacity verdicts** (new grammar facts):
+
+| Shape | Verdict |
+|---|---|
+| both optional top slots filled (manifest + recovery regions) | accepted |
+| any additional head child beyond the schema slots |reject (err 2) |
+| container with children beyond its capture capacity | reject (err 3) |
+| appended descriptor with more integer children than its table | reject (err 3) |
+| hash-set bodies with multiple arbitrary children | accepted (island-less internals) |
+| short-form length maxima (0x7e/0x7f over-declares) | reject via extent checks, never via the range asserts |
+
+The post2/post3 assert-ordering asymmetry (§7) stands as phase-local
+evidence that stage invariants differ per slot kind — carried into the
+Phase E rebase-table requirements.
 
 ## 9. Hygiene
 
