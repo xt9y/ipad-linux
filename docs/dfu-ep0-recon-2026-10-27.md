@@ -1123,4 +1123,18 @@ nothing Apple-proprietary handled locally).
 4. C2 stays unchanged (lower confidence; prior doc governs).
 5. Housekeeping: `make test` green before every commit; TSVs and DFU fuzz
    session logs stay untracked; wrapper artifacts and `pc4/` cache never
-   committed.
+   ## 9. Phase E pointer — instant-win branch and open version read (2026-11-04)
+
+The kickoff §4 instant-win branch is closed as a shortcut at class level:
+the public boot-chain class does not reach T8103 silicon, and public
+kernel-class windows (≤ iPadOS 17.3.1 on M1) cannot substitute the kernel
+for Linux boot. The device's exact iPadOS `ProductVersion` remains an open
+read — the DFU census by design cannot observe it (§7.4 reconciliation and
+`boot-entry-research.md` agree), so it enters the Phase E E0 census in
+normal mode. Analysis, verdict matrix, SecureROM-acquisition re-verification
+(absence stands), SPTM/TXM hardening comparison, and the full Phase E
+session plan with announcement rhythm live in
+`phase-e-prep-2026-11-04.md` (that document supersedes this recon's
+§8 "next session plan" ordering). No new device observations occurred for
+this section; nothing identifier-bearing from the side-local logs was
+transferred here — that discipline continues for every Phase E entry.
