@@ -31,11 +31,12 @@ as **unverified credibility** — unknown account, expansive claim; per the
 Phase F standing rule it is treated as unestablished literature until it has
 independent grounding. Not evidence.
 
-**Open read:** the device's exact iPadOS `ProductVersion` is recorded
+**Open read (closed 2026-11-05):** the device's exact iPadOS `ProductVersion` is recorded
 nowhere: the DFU census cannot observe it (DFU never loads iPadOS), and the
 legacy recovery `getenv`/`version` reads returned nothing on this build
-(`boot-entry-research.md`; recon §7.4 reconciliation). To be read at session
-E0 (normal mode, lockdown) — read-only, no writes.
+(`boot-entry-research.md`; recon §7.4 reconciliation). Read at E0 (normal
+mode lockdown, read-only): **27.0.1 / 24A446** — recon doc §10; the verdict
+paragraph below was written pre-read and stands unchanged.
 
 **Verdict (class-level):** at every observable version, the public landscape
 offers **no Linux-boot path**: the boot-chain class does not reach T8103
@@ -118,8 +119,11 @@ nonces) never leave the side logs — no exceptions.
   class against the recorded baseline census.
 - Also: clarify nothing is installed, opened, or written; no pairing
   prompts beyond the host's existing pairing state.
-- Output: instant-win verdict finalized into the recon doc (§7.16) —
-  version → kernel-window overlap → research-platform branch decision.
+- Output (recorded 2026-11-05): read `27.0.1` / `24A446` /
+  `mBoot-20457.2.37`, identity class matching the DFU baseline; verdict
+  finalized in `dfu-ep0-recon-2026-10-27.md` §10 — device is outside every
+  public window, so the program itself is the frontier and the session
+  plan below proceeds unchanged.
 - **User instruction: plug the iPad in normally when announced.** The DFU
   switch happens separately afterwards; do not pre-enter DFU.
 

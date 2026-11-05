@@ -1138,3 +1138,52 @@ session plan with announcement rhythm live in
 §8 "next session plan" ordering). No new device observations occurred for
 this section; nothing identifier-bearing from the side-local logs was
 transferred here — that discipline continues for every Phase E entry.
+
+## 10. Phase E E0 census — normal-mode lockdown read + instant-win verdict (2026-11-05)
+
+SAFE-tier, read-only, announced first. Method: paired-host lockdown query
+via libimobiledevice (`ideviceinfo`); no writes, no mode changes, no
+pairing prompts; no data left the device besides the queried field values.
+
+Fields read (class-level; identifier-class fields — serial/UDID/ECID
+row — deliberately queried-adjacent only, values withheld per hygiene
+rule):
+
+| Field | Value |
+|---|---|
+| ProductVersion | 27.0.1 |
+| BuildVersion | 24A446 |
+| FirmwareVersion | mBoot-20457.2.37 |
+| ProductType | iPad13,16 |
+| HardwareModel | J407AP |
+| BoardId | 16 (0x10) |
+| ChipID | 33027 (0x8103) |
+| CPUArchitecture | arm64e |
+| ProtocolVersion | 2 |
+
+Reconciliation with every prior record, all GREEN:
+
+- BoardId 0x10 / ChipID 0x8103 — match the 2026-10-24 DFU census exactly.
+- 27.0.1 / 24A446 — match the 2026-10-24 on-screen GA record
+  (`boot-chain-recon-24a446.md` header note; `boot-entry-research.md`
+  lockdown block). This closes the last open read of the instant-win
+  check: the device value was already pinned on 2026-10-24; today's
+  supervised read re-verifies it post-Phase-D with the same result.
+- mBoot-20457.2.37 — the loader tag carried by ALL FOUR audited stage
+  payloads (iBSS/iBEC/LLB/iBoot, `boot-chain-recon-24a446.md` inventory).
+  The Phase C/D audit maps therefore describe the build the device is
+  factually running — on-target, not same-family.
+
+**Verdict (final):** 27.0.1 is above every public kernel-class window for
+M1 silicon (public support ceiling: 17.3.1; ≥17.4 explicitly unbroken for
+real SPTM-era devices), outside the CoreTrust-era class entirely, and the
+boot-chain class has never publicly reached T8103. → **No instant win
+exists for this device; the program itself is the frontier** and the Phase
+E session plan in `phase-e-prep-2026-11-04.md` proceeds unchanged. The
+front value of the version read is the research-platform branch: at 27.0.1
+no published kernel access is available, so runtime instrumentation of the
+audited build must come from our own Phase E work.
+
+Restore-posture note (standing from `boot-entry-research.md`): device was
+beta-enrolled 2026-08-13 → 2026-10-22, then updated to signed GA 24A446 on
+2026-10-24; still pinned to the audited GA — no new consequence.
